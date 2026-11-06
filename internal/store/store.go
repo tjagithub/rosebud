@@ -6,12 +6,16 @@ import (
 	"database/sql"
 
 	_ "github.com/asg017/sqlite-vec-go-bindings/ncruces"
-	_ "github.com/ncruces/go-sqlite3/driver"
+	"github.com/ncruces/go-sqlite3"
+	"github.com/ncruces/go-sqlite3/driver"
 )
 
-// Open opens a database; use ":memory:" for tests.
+// Open opens a database; use ":memory:" for tests. Foreign keys are enabled
+// on every connection.
 func Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := driver.Open(dsn, func(c *sqlite3.Conn) error {
+		return c.Exec(`pragma foreign_keys = on`)
+	})
 	if err != nil {
 		return nil, err
 	}

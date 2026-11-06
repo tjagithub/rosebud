@@ -15,9 +15,9 @@ tasks:
       - go mod tidy
 
   fmt:
-    desc: Format code
+    desc: Format code (gofumpt, goimports)
     cmds:
-      - go fmt ./...
+      - golangci-lint fmt ./...
 
   vet:
     desc: Run go vet
@@ -33,6 +33,16 @@ tasks:
     desc: Run tests
     cmds:
       - go test ./...
+
+  vuln:
+    desc: Scan dependencies for known vulnerabilities
+    cmds:
+      - govulncheck ./...
+
+  complexity:
+    desc: Show the most cognitively complex functions
+    cmds:
+      - cccc --table --top-cognitive 5 .
 
   build:
     desc: Build the rose binary (CGO disabled)

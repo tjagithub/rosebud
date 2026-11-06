@@ -156,9 +156,8 @@ func (s *sub) push(e core.Event) {
 	key := e.CoalesceKey()
 	s.mu.Lock()
 	if el, ok := s.byKey[key]; ok && key != "" {
-		el.Value = e
-		s.mu.Unlock()
-		return
+		// Re-append so the newer event cannot overtake earlier ones.
+		s.q.Remove(el)
 	}
 	el := s.q.PushBack(e)
 	if key != "" {

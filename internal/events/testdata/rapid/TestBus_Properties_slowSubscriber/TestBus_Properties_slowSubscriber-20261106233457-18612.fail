@@ -1,0 +1,41 @@
+# 2026/11/06 23:34:57.659923 [TestBus_Properties_slowSubscriber] [rapid] draw ops: []events_test.op{events_test.op{kind:0, job:"a", n:1}, events_test.op{kind:1, job:"a", n:1}, events_test.op{kind:0, job:"a", n:1}, events_test.op{kind:1, job:"a", n:1}}
+# 2026/11/06 23:34:57.659930 [TestBus_Properties_slowSubscriber] [rapid] draw limit: 2
+# 2026/11/06 23:34:57.659942 [TestBus_Properties_slowSubscriber] slow subscriber saw duplicates or disorder: [0 3 2]
+# 
+v0.4.8#3146438084753852420
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1

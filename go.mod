@@ -12,4 +12,5 @@ require (
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/tetratelabs/wazero v1.8.2 // indirect
 	golang.org/x/sys v0.49.0 // indirect
+	pgregory.net/rapid v1.3.0 // indirect
 )

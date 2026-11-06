@@ -1,0 +1,29 @@
+# 2026/11/06 23:34:57.593079 [TestBus_Properties_oneSubscriber] [rapid] draw ops: []events_test.op{events_test.op{kind:1, job:"a", n:1}, events_test.op{kind:0, job:"a", n:1}, events_test.op{kind:1, job:"a", n:1}}
+# 2026/11/06 23:34:57.593145 [TestBus_Properties_oneSubscriber] events not delivered once each in publish order: [2 1]
+# 
+v0.4.8#5325667807931449090
+0x5555555555555
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

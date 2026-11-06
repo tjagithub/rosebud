@@ -1,0 +1,43 @@
+# 2026/11/06 23:39:42.134090 [TestRunner_Properties] [rapid] draw steps: []jobs_test.step{jobs_test.step{kind:0, film:0, pick:0, fail:false}, jobs_test.step{kind:0, film:1, pick:0, fail:false}, jobs_test.step{kind:1, film:0, pick:1, fail:false}}
+# 2026/11/06 23:39:42.134135 [TestRunner_Properties] [rapid] draw workers: 1
+# 2026/11/06 23:39:42.134136 [TestRunner_Properties] [rapid] draw history: 1
+# 2026/11/06 23:39:42.134145 [TestRunner_Properties] job job-2 moved 5 -> 5 (states [1 5 5])
+# 
+v0.4.8#12390685626055103439
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x5555555555555
+0x38e38e38e38e4
+0x2
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

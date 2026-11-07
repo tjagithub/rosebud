@@ -20,8 +20,6 @@ import (
 	"github.com/tjagithub/rosebud/internal/translate"
 )
 
-const plamoModel = "pfnet/plamo-3-translate-0.8b-MLX-4bit"
-
 // runTranslate writes an English translation beside each scene's text. newTr
 // builds the translator for a model name; nil uses PLaMo-3.
 func runTranslate(ctx context.Context, args []string, stdout, stderr io.Writer, newTr func(model, lang string, timeout time.Duration) translate.Translator) error {
@@ -29,7 +27,9 @@ func runTranslate(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	fs.SetOutput(stderr)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
 	lang := fs.String("lang", "ja", "language code of the scene text")
-	model := fs.String("model", plamoModel, "translation model")
+	backend := fs.String("backend", "rikai", "how to translate: rikai (ja to en) or plamo (more languages, runs the model's own code)")
+	model := fs.String("model", "", "translation model (default: the backend's)")
+	revision := fs.String("revision", "", "commit of --model to download (required with a custom model)")
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the model may take to load and translate a batch, such as 45m")
 	debug := fs.Bool("debug", false, "show the commands run and how long they took")
 	fs.Usage = func() { dashed(fs, stderr) }
@@ -57,8 +57,27 @@ func runTranslate(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	if !set["lang"] {
 		*lang = cfg.Get("TRANSLATE_LANG")
 	}
+	if !set["backend"] {
+		*backend = cfg.Get("TRANSLATE_BACKEND")
+	}
 	if !set["model"] {
 		*model = cfg.Get("TRANSLATE_MODEL")
+	}
+	if !set["revision"] {
+		*revision = cfg.Get("TRANSLATE_REVISION")
+	}
+	be, ok := translate.Backends[*backend]
+	if !ok {
+		return fmt.Errorf("translate: unknown backend %q", *backend)
+	}
+	if *model == "" {
+		*model = be.Model
+		if *revision == "" {
+			*revision = be.Revision
+		}
+	}
+	if *revision == "" {
+		return errors.New("translate: a custom model needs --revision (TRANSLATE_REVISION), the commit to download")
 	}
 	if !set["timeout"] {
 		*timeout = cfg.Duration("TRANSLATE_TIMEOUT")
@@ -104,7 +123,7 @@ func runTranslate(ctx context.Context, args []string, stdout, stderr io.Writer, 
 		if *debug {
 			ex = tracedExec(ex, stderr)
 		}
-		p := translate.Plamo{Exec: ex, Model: *model, Revision: translate.PlamoRevision, Source: *lang, Load: *timeout, PerLine: *timeout / 20}
+		p := translate.Local{Exec: ex, Backend: be, Model: *model, Revision: *revision, Source: *lang, Load: *timeout, PerLine: *timeout / 20}
 		tr = translate.Cached{Inner: p, Dir: c, Salt: p.CacheKey(), Batch: cfg.Int("TRANSLATE_BATCH")}
 	}
 	stage := translate.Stage{Store: st, Translator: tr}

@@ -16,8 +16,10 @@ import (
 
 const model = "pfnet/plamo-3-translate-0.8b-MLX-4bit"
 
-func plamo(ex translate.Exec) translate.Plamo {
-	return translate.Plamo{Exec: ex, Model: model, Revision: translate.PlamoRevision, Source: "ja",
+var plamoBackend = translate.Backends["plamo"]
+
+func plamo(ex translate.Exec) translate.Local {
+	return translate.Local{Exec: ex, Backend: plamoBackend, Model: model, Revision: plamoBackend.Revision, Source: "ja",
 		Load: time.Minute, PerLine: time.Minute}
 }
 
@@ -65,7 +67,7 @@ func TestPlamoTranslatesAndSkipsEmpty(t *testing.T) {
 	if len(f.input) != 2 {
 		t.Errorf("sent %d lines, want 2", len(f.input))
 	}
-	for _, want := range []string{"uv", "run", "3.12", "mlx-lm==0.32.2", model, translate.PlamoRevision, "ja"} {
+	for _, want := range []string{"uv", "run", "3.12", "mlx-lm==0.32.2", model, plamoBackend.Revision, "ja"} {
 		if !slices.Contains(f.args, want) {
 			t.Errorf("command lacks %q: %v", want, f.args)
 		}
@@ -218,4 +220,21 @@ type translatorFunc func(context.Context, []string) ([]string, error)
 
 func (f translatorFunc) Translate(ctx context.Context, l []string) ([]string, error) {
 	return f(ctx, l)
+}
+
+func TestBackendsArePinned(t *testing.T) {
+	for name, b := range translate.Backends {
+		if b.Name != name || len(b.Script) == 0 || b.Model == "" || len(b.Revision) != 40 {
+			t.Errorf("backend %q is not fully pinned: %+v", name, b.Name)
+		}
+	}
+}
+
+func TestCacheKeyDiffersByBackend(t *testing.T) {
+	a := plamo(nil)
+	b := a
+	b.Backend = translate.Backends["rikai"]
+	if a.CacheKey() == b.CacheKey() {
+		t.Error("backends must not share cache entries")
+	}
 }

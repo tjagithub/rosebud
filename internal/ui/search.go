@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -36,16 +37,14 @@ type searchScreen struct {
 	hits          []core.Hit
 	sel           int
 	err           error
-	bundle        string
-	want, shown   string // frame path being loaded, and the one on screen
-	rows          int
+	fr            pane
 }
 
 func newSearch(src Searcher, limit int, cfg config) *searchScreen {
 	in := textinput.New()
 	in.Prompt = "search: "
 	in.Focus()
-	return &searchScreen{src: src, limit: limit, input: in, bundle: cfg.bundle}
+	return &searchScreen{src: src, limit: limit, input: in, fr: pane{id: frameID, cols: frameCols, bundle: cfg.bundle}}
 }
 
 func (m *searchScreen) Init() tea.Cmd { return nil }
@@ -62,9 +61,14 @@ func (m *searchScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		m.hits, m.err, m.sel = msg.Hits, msg.Err, 0
 		return m, m.frame()
 	case FrameMsg:
-		return m, m.onFrame(msg)
+		return m, m.fr.onFrame(msg)
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "enter":
+			if m.sel < len(m.hits) {
+				return m, Push(newDetail(m.hits[m.sel], m.fr.bundle))
+			}
+			return m, nil
 		case "up":
 			m.sel = max(m.sel-1, 0)
 			return m, m.frame()
@@ -89,7 +93,7 @@ func (m *searchScreen) search() tea.Cmd {
 	seq, text := m.seq, strings.TrimSpace(m.input.Value())
 	if text == "" {
 		m.hits, m.err, m.sel = nil, nil, 0
-		m.shown, m.want = "", ""
+		m.fr.shown, m.fr.want = "", ""
 		return nil
 	}
 	return func() tea.Msg {
@@ -123,8 +127,8 @@ func (m *searchScreen) View() string {
 	if m.sel < len(m.hits) {
 		h := m.hits[m.sel]
 		b.WriteString("\n" + dim.Render(strings.Repeat("─", w)) + "\n")
-		if m.shown != "" {
-			b.WriteString(m.framePane())
+		if m.fr.shown != "" {
+			b.WriteString(m.fr.view())
 		}
 		b.WriteString(columns(w, original(h), h.Translation) + "\n")
 	}
@@ -170,3 +174,12 @@ func columns(w int, left, right string) string {
 }
 
 func (m *searchScreen) Title() string { return "search" }
+
+var (
+	openKey = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open scene"))
+	moveKey = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "move"))
+	quitKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
+)
+
+func (m *searchScreen) ShortHelp() []key.Binding  { return []key.Binding{moveKey, openKey, quitKey} }
+func (m *searchScreen) FullHelp() [][]key.Binding { return [][]key.Binding{m.ShortHelp()} }

@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	frameID   = 7  // the one kitty image slot; each frame replaces the last
-	frameCols = 36 // width of the frame pane in cells
+	frameID   = 7  // kitty image slot of the search screen
+	frameCols = 36 // width of its frame pane in cells
 	maxPixels = 640
 )
 
 // FrameMsg carries the kitty escape that uploads the frame at Path. Data is
 // empty when the frame could not be read.
 type FrameMsg struct {
+	ID   int // the pane that asked
 	Path string
 	Data string
 	Rows int
@@ -41,32 +42,49 @@ type config struct {
 // terminals that support kitty's unicode placeholders.
 func WithBundle(dir string) Option { return func(c *config) { c.bundle = dir } }
 
-// frame starts loading the selected hit's frame, if there is one to show.
-func (m *searchScreen) frame() tea.Cmd {
-	m.shown = ""
-	if m.bundle == "" || m.sel >= len(m.hits) || m.hits[m.sel].Scene.Frame == "" {
+// pane shows one frame image in a fixed slot of the terminal.
+type pane struct {
+	id, cols    int
+	bundle      string
+	want, shown string // frame path being loaded, and the one on screen
+	rows        int
+}
+
+// load starts loading the frame at rel, a bundle-relative path; "" clears the pane.
+func (p *pane) load(rel string) tea.Cmd {
+	p.shown = ""
+	if p.bundle == "" || rel == "" {
+		p.want = ""
 		return nil
 	}
-	rel, dir := m.hits[m.sel].Scene.Frame, m.bundle
-	m.want = rel
+	p.want = rel
+	id, cols, dir := p.id, p.cols, p.bundle
 	return func() tea.Msg {
-		data, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)))
-		return FrameMsg{Path: rel, Data: data, Rows: rows}
+		data, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)), id, cols)
+		return FrameMsg{ID: id, Path: rel, Data: data, Rows: rows}
 	}
 }
 
-// onFrame sends a loaded frame to the terminal if it is still the selected one.
-func (m *searchScreen) onFrame(msg FrameMsg) tea.Cmd {
-	if msg.Path != m.want || msg.Data == "" {
+// onFrame sends a loaded frame to the terminal if it is still the wanted one.
+func (p *pane) onFrame(msg FrameMsg) tea.Cmd {
+	if msg.ID != p.id || msg.Path != p.want || msg.Data == "" {
 		return nil
 	}
-	m.shown, m.rows = msg.Path, msg.Rows
+	p.shown, p.rows = msg.Path, msg.Rows
 	return tea.Raw(msg.Data)
+}
+
+// frame loads the frame of the selected hit, if there is one.
+func (m *searchScreen) frame() tea.Cmd {
+	if m.sel >= len(m.hits) {
+		return m.fr.load("")
+	}
+	return m.fr.load(m.hits[m.sel].Scene.Frame)
 }
 
 // loadFrame decodes a jpeg, shrinks it, and returns the kitty upload for a
 // virtual placement plus the rows it covers. Any failure returns "".
-func loadFrame(ctx context.Context, path string) (string, int) {
+func loadFrame(ctx context.Context, path string, id, cols int) (string, int) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	type result struct {
@@ -89,11 +107,11 @@ func loadFrame(ctx context.Context, path string) (string, int) {
 		img = shrink(img, maxPixels)
 		b := img.Bounds()
 		// A cell is about twice as tall as wide.
-		rows := max(1, frameCols*b.Dy()/b.Dx()/2)
+		rows := max(1, cols*b.Dy()/b.Dx()/2)
 		var buf bytes.Buffer
 		err = kitty.EncodeGraphics(&buf, img, &kitty.Options{
-			Action: kitty.TransmitAndPut, ID: frameID, Format: kitty.PNG, Transmission: kitty.Direct,
-			VirtualPlacement: true, Columns: frameCols, Rows: rows, Quite: 2, Chunk: true,
+			Action: kitty.TransmitAndPut, ID: id, Format: kitty.PNG, Transmission: kitty.Direct,
+			VirtualPlacement: true, Columns: cols, Rows: rows, Quite: 2, Chunk: true,
 		})
 		if err != nil {
 			done <- result{}
@@ -126,11 +144,11 @@ func shrink(img image.Image, max int) image.Image {
 }
 
 // framePane is the placeholder cells that the terminal paints the frame into.
-func (m *searchScreen) framePane() string {
+func (p *pane) view() string {
 	var sb strings.Builder
-	for r := range m.rows {
-		fmt.Fprintf(&sb, "\x1b[38;5;%dm", frameID)
-		for c := range frameCols {
+	for r := range p.rows {
+		fmt.Fprintf(&sb, "\x1b[38;5;%dm", p.id)
+		for c := range p.cols {
 			sb.WriteRune(kitty.Placeholder)
 			sb.WriteRune(kitty.Diacritic(r))
 			sb.WriteRune(kitty.Diacritic(c))

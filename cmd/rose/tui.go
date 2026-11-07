@@ -48,7 +48,7 @@ func tuiCmd() *cobra.Command {
 			}
 			eng := engine.New(st)
 			defer func() { _ = eng.Close() }()
-			_, err = tea.NewProgram(ui.New(eng, limit), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
+			_, err = tea.NewProgram(ui.New(eng, limit, ui.WithBundle(bundle)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
 			return err
 		},
 	}

@@ -37,14 +37,21 @@ type Model struct {
 	hits          []core.Hit
 	sel           int
 	err           error
+	bundle        string
+	want, shown   string // frame path being loaded, and the one on screen
+	rows          int
 }
 
 // New returns a screen that shows up to limit hits per search.
-func New(src Searcher, limit int) *Model {
+func New(src Searcher, limit int, opts ...Option) *Model {
 	in := textinput.New()
 	in.Prompt = "search: "
 	in.Focus()
-	return &Model{src: src, limit: limit, input: in}
+	m := &Model{src: src, limit: limit, input: in}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
 }
 
 // Selected is the index of the highlighted hit.
@@ -62,16 +69,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.hits, m.err, m.sel = msg.Hits, msg.Err, 0
+		return m, m.frame()
+	case FrameMsg:
+		return m, m.onFrame(msg)
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			return m, tea.Quit
 		case "up":
 			m.sel = max(m.sel-1, 0)
-			return m, nil
+			return m, m.frame()
 		case "down":
 			m.sel = max(min(m.sel+1, len(m.hits)-1), 0)
-			return m, nil
+			return m, m.frame()
 		}
 		before := m.input.Value()
 		var cmd tea.Cmd
@@ -90,6 +100,7 @@ func (m *Model) search() tea.Cmd {
 	seq, text := m.seq, strings.TrimSpace(m.input.Value())
 	if text == "" {
 		m.hits, m.err, m.sel = nil, nil, 0
+		m.shown, m.want = "", ""
 		return nil
 	}
 	return func() tea.Msg {
@@ -123,6 +134,9 @@ func (m *Model) View() tea.View {
 	if m.sel < len(m.hits) {
 		h := m.hits[m.sel]
 		b.WriteString("\n" + dim.Render(strings.Repeat("─", w)) + "\n")
+		if m.shown != "" {
+			b.WriteString(m.framePane())
+		}
 		for _, p := range []string{h.Translation, h.Subtitle, h.Text} {
 			if p = strings.TrimSpace(p); p != "" {
 				b.WriteString(lipgloss.NewStyle().Width(w).Render(p) + "\n")

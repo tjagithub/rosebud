@@ -2,6 +2,7 @@
 package uitest
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,8 +11,9 @@ import (
 
 // TUI wraps a model; each call sends input and runs the commands it returns.
 type TUI struct {
-	t *testing.T
-	m tea.Model
+	t   *testing.T
+	m   tea.Model
+	Raw []string // what the model asked to write straight to the terminal
 }
 
 // New starts m at 80x24.
@@ -60,6 +62,11 @@ func (u *TUI) Send(msg tea.Msg) {
 	u.t.Helper()
 	queue := []tea.Msg{msg}
 	for len(queue) > 0 {
+		if r, ok := queue[0].(tea.RawMsg); ok {
+			u.Raw = append(u.Raw, fmt.Sprint(r.Msg))
+			queue = queue[1:]
+			continue
+		}
 		var cmd tea.Cmd
 		u.m, cmd = u.m.Update(queue[0])
 		queue = queue[1:]

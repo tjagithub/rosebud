@@ -140,3 +140,15 @@ func TestReadEventsKeepsIssuesWhenRetryStaysEmpty(t *testing.T) {
 		t.Errorf("issues = %+v", issues)
 	}
 }
+
+func TestReadEventsDropsMarkdownTables(t *testing.T) {
+	frame := textImg(image.Rect(10, 10, 100, 20), 255)
+	rd := &bandReader{texts: [][]string{{"| a | b |\n| --- | --- |\n| x | 1 |"}}}
+	out, issues, err := ocr.ReadEvents(t.Context(), rd, []image.Image{frame})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0] != "" || len(issues) == 0 {
+		t.Errorf("a table is the model inventing structure, got %q, issues %v", out[0], issues)
+	}
+}

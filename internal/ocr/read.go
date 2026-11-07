@@ -21,6 +21,7 @@ func ReadEvents(ctx context.Context, rd Reader, frames []image.Image) ([]string,
 	if err != nil {
 		return nil, nil, err
 	}
+	clearTables(out)
 	// Every frame has ink, so an empty read is a model miss. Re-stack the misses
 	// together: the new layout is a new cache key and a fresh chance.
 	var miss []int
@@ -38,6 +39,7 @@ func ReadEvents(ctx context.Context, rd Reader, frames []image.Image) ([]string,
 		if err != nil {
 			return nil, nil, err
 		}
+		clearTables(retry)
 		for k, i := range miss {
 			out[i] = retry[k]
 		}
@@ -91,4 +93,17 @@ func Assign(scenes []subs.Span, events []Event, texts []string) (map[int]string,
 		out[j] = strings.Join(p, "\n")
 	}
 	return out, issues
+}
+
+// isTable spots the markdown table the model makes up when a frame has no real text.
+func isTable(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), "|") && strings.Contains(s, "---")
+}
+
+func clearTables(texts []string) {
+	for i, s := range texts {
+		if isTable(s) {
+			texts[i] = ""
+		}
+	}
 }

@@ -69,6 +69,9 @@ func overlap(a, b *image.Gray) float64 {
 	return float64(both) / float64(either)
 }
 
+// maxLitShare is the most of a band that text can light; more is a picture.
+const maxLitShare = 0.25
+
 // sameLine is how much two samples must overlap to count as one subtitle.
 const sameLine = 0.4
 
@@ -82,7 +85,7 @@ func BurnedEvents(samples []Sample, step time.Duration, minInk int) ([]Event, []
 	open := false
 	for i, s := range samples {
 		n := lit(s.Img)
-		if n < minInk {
+		if n < minInk || float64(n) > maxLitShare*float64(len(s.Img.Pix)) {
 			open = false
 			continue
 		}

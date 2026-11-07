@@ -103,3 +103,12 @@ func TestBurnedStageSkipsWhenThereIsNoText(t *testing.T) {
 		t.Errorf("err = %v, wrote = %v", err, st.set)
 	}
 }
+
+func TestBurnedEventsIgnoresBrightPictures(t *testing.T) {
+	step := time.Second
+	whole := image.Rect(0, 0, 200, 40) // a bright shoe, not a subtitle
+	ev, _ := ocr.BurnedEvents([]ocr.Sample{{At: 0, Img: textImg(whole, 255)}}, step, 50)
+	if len(ev) != 0 {
+		t.Errorf("a mostly lit band is not text: %v", ev)
+	}
+}

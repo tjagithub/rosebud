@@ -39,6 +39,8 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
 	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")
 	debug := fs.Bool("debug", false, "show the commands run and how long they took")
+	burned := fs.Bool("burned", false, "read subtitles burned into the picture instead of a subtitle track")
+	fps := fs.Int("fps", 2, "with --burned, frames sampled per second")
 	cmd := &cobra.Command{Use: "ocr [flags] FILE", Short: "Read bitmap subtitles into a film's scenes", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
 		ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
 		file, err := filepath.Abs(args[0])
@@ -114,15 +116,19 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 			nem := ocr.Nemotron{Exec: ex, Model: *model, Load: *timeout, PerPage: *timeout / 4}
 			rd = ocr.Cached{Inner: nem, Dir: c, Salt: nem.CacheKey(), Batch: cfg.Int("OCR_BATCH")}
 		}
-		stage := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout}
-		if *verbose || *debug {
-			stage.OnIssues = func(is []ocr.Issue) {
-				for _, i := range is {
-					_, _ = fmt.Fprintf(stderr, "set aside: %s: %s\n", i.Ref, i.Reason)
-				}
+		issues := func(is []ocr.Issue) {
+			if !*verbose && !*debug {
+				return
+			}
+			for _, i := range is {
+				_, _ = fmt.Fprintf(stderr, "set aside: %s: %s\n", i.Ref, i.Reason)
 			}
 		}
-		eng := engine.New(st, engine.WithStage("ocr", stage.Run))
+		run := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout, OnIssues: issues}.Run
+		if *burned {
+			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: *fps, MinInk: 400, Timeout: *timeout, OnIssues: issues}.Run
+		}
+		eng := engine.New(st, engine.WithStage("ocr", run))
 		defer func() { _ = eng.Close() }()
 
 		film := core.FilmID(stem)

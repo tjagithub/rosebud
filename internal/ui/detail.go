@@ -46,7 +46,7 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		d.w, d.h = msg.Width, msg.Height
-		d.fr.box = size{cols: max(d.w-2, 8), rows: max(d.h-detailChrome, 1)}
+		d.fr.box = size{cols: max(d.w-4, 8), rows: max(d.h-detailChrome, 1)}
 		return d, d.fr.load(d.hit().Scene.Frame)
 	case FrameMsg:
 		return d, d.fr.onFrame(msg)
@@ -62,7 +62,7 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 // detailChrome is the lines the strip, the two spare lines and the text take.
-const detailChrome = 3 + 1 + 1 + dialogueRows
+const detailChrome = 3 + 2 + dialogueRows + 2
 
 const dialogueRows = 4
 
@@ -71,12 +71,13 @@ const dialogueRows = 4
 func (d *detailScreen) View() string {
 	w := max(d.w, 20)
 	imgRows := max(d.h-detailChrome, 1)
-	img := lipgloss.Place(w, imgRows, lipgloss.Center, lipgloss.Center, d.image())
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(w)
+	img := box.Render(lipgloss.Place(w-2, imgRows, lipgloss.Center, lipgloss.Center, d.image()))
 	s := d.hit().Scene
 	info := fmt.Sprintf("%d/%d  %s – %s  %s", d.i+1, len(d.hits), Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
-	text := lipgloss.NewStyle().Height(dialogueRows).MaxHeight(dialogueRows).Render(
-		columns(w, original(d.hit()), info+"\n"+d.hit().Translation))
-	return strings.Join([]string{d.strip(w), "", img, "", text}, "\n")
+	text := box.Height(dialogueRows + 2).MaxHeight(dialogueRows + 2).Render(
+		columns(w-2, original(d.hit()), info+"\n"+d.hit().Translation))
+	return strings.Join([]string{d.strip(w), img, text}, "\n")
 }
 
 // image is the frame's placeholder cells, or nothing while it loads.

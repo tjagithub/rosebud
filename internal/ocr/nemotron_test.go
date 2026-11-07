@@ -194,3 +194,13 @@ func TestNemotronTimesOutWithTheModelsName(t *testing.T) {
 		t.Errorf("err = %v\nwant mention of %q", err, want)
 	}
 }
+
+func TestNemotronCacheKey(t *testing.T) {
+	a := ocr.Nemotron{Model: "org/a"}.CacheKey()
+	if a == "" || a != (ocr.Nemotron{Model: "org/a", Load: time.Hour}).CacheKey() {
+		t.Errorf("key %q is empty or depends on timeouts", a)
+	}
+	if a == (ocr.Nemotron{Model: "org/b"}).CacheKey() {
+		t.Error("two models share a key")
+	}
+}

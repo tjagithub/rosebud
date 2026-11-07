@@ -131,3 +131,11 @@ func IsInt(v string) error {
 	}
 	return nil
 }
+
+// IsPositiveInt accepts a whole number above zero.
+func IsPositiveInt(v string) error {
+	if n, err := strconv.Atoi(v); err != nil || n <= 0 {
+		return fmt.Errorf("%q is not a whole number above zero", v)
+	}
+	return nil
+}

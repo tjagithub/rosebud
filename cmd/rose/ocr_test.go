@@ -79,3 +79,15 @@ func TestLoadConfigLayers(t *testing.T) {
 		t.Error("typo in a key: no error")
 	}
 }
+
+func TestLoadConfigWithoutBundleIgnoresTheWorkingDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("rose.conf", []byte("OCR_MODEL=stray\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConfig(t.Context(), "", nil)
+	if err != nil || c.Get("OCR_MODEL") == "stray" {
+		t.Errorf("model %q, err %v", c.Get("OCR_MODEL"), err)
+	}
+}

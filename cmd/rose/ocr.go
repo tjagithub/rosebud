@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tjagithub/rosebud/internal/cache"
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
 	"github.com/tjagithub/rosebud/internal/limit"
@@ -87,9 +88,25 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	if *debug {
 		ex = traced(ex, stderr)
 	}
-	var rd ocr.Reader = ocr.Nemotron{Exec: ex, Model: *model, Load: *timeout, PerPage: *timeout / 4}
+	var rd ocr.Reader
 	if newReader != nil {
 		rd = newReader(*model, *timeout)
+	} else {
+		dir, err := cacheDir(cfg)
+		if err != nil {
+			return err
+		}
+		c := cache.Dir{Path: dir}
+		sweepCtx, stopSweep := context.WithTimeout(ctx, 30*time.Second)
+		n, err := c.Sweep(sweepCtx, int64(cfg.Int("CACHE_MAX_MB"))<<20, cfg.Duration("CACHE_MAX_AGE"))
+		stopSweep()
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "cache: not trimmed: %v\n", err)
+		} else if *debug {
+			_, _ = fmt.Fprintf(stderr, "debug: cache trimmed, %d removed\n", n)
+		}
+		nem := ocr.Nemotron{Exec: ex, Model: *model, Load: *timeout, PerPage: *timeout / 4}
+		rd = ocr.Cached{Inner: nem, Dir: c, Salt: nem.CacheKey(), Batch: cfg.Int("OCR_BATCH")}
 	}
 	stage := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout}
 	if *verbose || *debug {

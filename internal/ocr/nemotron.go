@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -136,4 +138,13 @@ func parseNemotron(out []byte, n int) ([][]Block, error) {
 		blocks[i] = ParseBlocks(text)
 	}
 	return blocks, nil
+}
+
+// CacheKey names the model and the code that drives it, so a change to
+// either misses every cached page.
+func (n Nemotron) CacheKey() string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(n.Model + "\x00" + strings.Join(nemotronDeps, "\x00") + "\x00"))
+	_, _ = h.Write(nemotronScript)
+	return "nemotron:" + hex.EncodeToString(h.Sum(nil))[:16]
 }

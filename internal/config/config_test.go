@@ -111,3 +111,11 @@ func TestFileLayer(t *testing.T) {
 		t.Error("zero timeout: no error")
 	}
 }
+
+func TestIsPositiveInt(t *testing.T) {
+	for v, ok := range map[string]bool{"1": true, "500": true, "0": false, "-3": false, "x": false, "": false} {
+		if got := config.IsPositiveInt(v) == nil; got != ok {
+			t.Errorf("IsPositiveInt(%q) ok = %t, want %t", v, got, ok)
+		}
+	}
+}

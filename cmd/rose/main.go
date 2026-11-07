@@ -30,6 +30,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runScenes(ctx, args[1:], stdout, stderr)
 	case "subs":
 		return runSubs(ctx, args[1:], stdout, stderr, parakeet)
+	case "ocr":
+		return runOCR(ctx, args[1:], stdout, stderr, nil)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

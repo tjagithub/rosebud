@@ -29,9 +29,10 @@ type Scene struct {
 
 // Hit is a search result with its matching line.
 type Hit struct {
-	Scene Scene
-	Text  string
-	Score float64
+	Scene    Scene
+	Text     string
+	Subtitle string // the on-screen subtitle, empty if none was read
+	Score    float64
 }
 
 // SearchQuery searches one film, or all when Film is empty.

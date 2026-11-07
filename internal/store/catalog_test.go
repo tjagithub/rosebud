@@ -70,8 +70,8 @@ func TestNew(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 2 {
-		t.Errorf("user_version = %d, %v; want 2", v, err)
+	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 3 {
+		t.Errorf("user_version = %d, %v; want 3", v, err)
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 // migrations[i] upgrades user_version i to i+1. Append only; never edit.
-var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2}
+var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3}
 
 func toV1(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
@@ -70,6 +70,13 @@ create trigger scenes_au after update on scenes begin
 	insert into scene_fts(rowid, norm) values (new.id, new.norm);
 end;
 insert into scene_fts(scene_fts) values ('rebuild');`)
+	return err
+}
+
+// toV3 adds the on-screen subtitle beside the spoken text. norm already follows
+// both, so the index needs no change.
+func toV3(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `alter table scenes add column subtitle text not null default ''`)
 	return err
 }
 

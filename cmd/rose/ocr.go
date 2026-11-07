@@ -1,0 +1,129 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/tjagithub/rosebud/internal/core"
+	"github.com/tjagithub/rosebud/internal/engine"
+	"github.com/tjagithub/rosebud/internal/limit"
+	"github.com/tjagithub/rosebud/internal/ocr"
+	"github.com/tjagithub/rosebud/internal/scenes"
+	"github.com/tjagithub/rosebud/internal/store"
+)
+
+const nemotronModel = "mlx-community/Nemotron-Parse-2.0-8bit"
+
+// runOCR reads a film's bitmap subtitles into its scenes. newReader builds
+// the Reader for a model name; nil uses Nemotron-Parse.
+func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newReader func(model string, timeout time.Duration) ocr.Reader) error {
+	fs := flag.NewFlagSet("ocr", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
+	lang := fs.String("lang", "ja", "language code of the subtitle track to read")
+	model := fs.String("model", nemotronModel, "OCR model")
+	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
+	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")
+	debug := fs.Bool("debug", false, "show the commands run and how long they took")
+	fs.Usage = func() { dashed(fs, stderr) }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: rose ocr [flags] FILE")
+	}
+	if *lang == "" || *timeout <= 0 {
+		return errors.New("ocr: --lang must be set and --timeout must be positive")
+	}
+	file, err := filepath.Abs(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if err := statWithin(file, 15*time.Second, os.Stat); err != nil {
+		return err
+	}
+	stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	bundle := *bundleDir
+	if bundle == "" {
+		bundle = filepath.Join(filepath.Dir(file), stem+".film")
+	}
+	dbPath := filepath.Join(bundle, "rose.db")
+	if err := statWithin(dbPath, 15*time.Second, os.Stat); err != nil {
+		return fmt.Errorf("no scenes for %s yet: run `rose scenes` first", file)
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+	st, err := store.New(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	ex := ocr.Exec(scenes.NewExec(scenes.WithWaitDelay(5 * time.Second)))
+	if *debug {
+		ex = traced(ex, stderr)
+	}
+	var rd ocr.Reader = ocr.Nemotron{Exec: ex, Model: *model, Load: *timeout, PerPage: *timeout / 4}
+	if newReader != nil {
+		rd = newReader(*model, *timeout)
+	}
+	stage := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout}
+	if *verbose || *debug {
+		stage.OnIssues = func(is []ocr.Issue) {
+			for _, i := range is {
+				_, _ = fmt.Fprintf(stderr, "set aside: %s: %s\n", i.Ref, i.Reason)
+			}
+		}
+	}
+	eng := engine.New(st, engine.WithStage("ocr", stage.Run))
+	defer func() { _ = eng.Close() }()
+
+	film := core.FilmID(stem)
+	spec := core.JobSpec{Stage: "ocr", Film: film, Params: map[string]string{"file": file, "lang": *lang}}
+	if _, err := runJob(ctx, eng, spec, stderr); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "subtitles read into %s\n", bundle)
+	return err
+}
+
+// statWithin stats path, giving up after d in case a stalled mount hangs it.
+func statWithin(path string, d time.Duration, stat func(string) (os.FileInfo, error)) error {
+	done := make(chan error, 1)
+	go func() { _, err := stat(path); done <- err }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return &limit.TimeoutError{What: "checking " + path, After: d}
+	}
+}
+
+// traced logs each command and how long it took.
+func traced(ex ocr.Exec, w io.Writer) ocr.Exec {
+	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		start := time.Now()
+		out, err := ex(ctx, name, args...)
+		_, _ = fmt.Fprintf(w, "debug: %s %s (%v, %d bytes, err %v)\n", name, strings.Join(args, " "), time.Since(start).Round(time.Millisecond), len(out), err)
+		return out, err
+	}
+}
+
+// dashed prints the usage with long flags shown as --name.
+func dashed(fs *flag.FlagSet, w io.Writer) {
+	var b strings.Builder
+	fs.SetOutput(&b)
+	fs.PrintDefaults()
+	fs.SetOutput(w)
+	_, _ = fmt.Fprintln(w, "usage: rose ocr [flags] FILE")
+	_, _ = io.WriteString(w, "  --"+strings.TrimPrefix(strings.ReplaceAll(b.String(), "\n  -", "\n  --"), "  -"))
+}

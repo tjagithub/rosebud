@@ -119,3 +119,49 @@ func TestPickAcceptsTwoAndThreeLetterCodes(t *testing.T) {
 		t.Error("a two-letter track tag did not match jpn")
 	}
 }
+
+func TestPickLanguageCodes(t *testing.T) {
+	found := func(trackLang, want string) bool {
+		_, ok := subsrc.Pick([]subsrc.Track{{Codec: "subrip", Lang: trackLang}}, want)
+		return ok
+	}
+	for _, c := range [][2]string{
+		{"tur", "tr"},
+		{"tr", "tur"},
+		{"kor", "ko"},
+		{"ara", "ar"},
+		{"hin", "hi"},
+		{"fre", "fr"},
+		{"fra", "fre"},
+		{"ger", "de"},
+		{"chi", "zh"},
+		{"zho", "chi"},
+		{"cze", "cs"},
+		{"gre", "el"},
+		{"wel", "cy"},
+		{"per", "fa"},
+		{"rum", "ro"},
+		{"alb", "sqi"},
+		{"arm", "hye"},
+		{"baq", "eus"},
+		{"bur", "mya"},
+		{"dut", "nl"},
+		{"geo", "kat"},
+		{"ice", "isl"},
+		{"mac", "mkd"},
+		{"mao", "mri"},
+		{"may", "msa"},
+		{"slo", "slk"},
+		{"tib", "bod"},
+		{"xx", "xx"},
+	} {
+		if !found(c[0], c[1]) {
+			t.Errorf("track %q was not found by %q", c[0], c[1])
+		}
+	}
+	for _, c := range [][2]string{{"jpn", "kor"}, {"fre", "ger"}, {"xx", "yy"}, {"jpn", ""}, {"", "jpn"}, {"jpn", "jp"}} {
+		if found(c[0], c[1]) {
+			t.Errorf("track %q was found by %q", c[0], c[1])
+		}
+	}
+}

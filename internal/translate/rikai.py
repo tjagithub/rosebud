@@ -38,11 +38,15 @@ def main(path, model_id, revision, source):
         model(mx.array([ids[:-1]]), cache=cache)
         llama.create_attention_mask = causal  # generation stays causal
         logits, out = model(mx.array([ids[-1:]]), cache=cache), []
-        for _ in range(max_tokens):
+        limit = min(max_tokens, 8 * len(text) + 32)  # a translation is never this long
+        for _ in range(limit):
             t = mx.argmax(logits[0, -1]).item()
             if t in tok.eos_token_ids:
                 break
             out.append(t)
+            if len(out) >= 48 and out[-24:] == out[-48:-24]:  # stuck in a loop
+                del out[-24:]
+                break
             logits = model(mx.array([[t]]), cache=cache)
         return tok.decode(out).strip()
 

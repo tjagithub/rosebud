@@ -124,3 +124,31 @@ func TestBoundaries_Properties(t *testing.T) {
 		}
 	})
 }
+
+func TestSplitLong(t *testing.T) {
+	s := time.Second
+	got := scenes.SplitLong([]scenes.Span{{0, 10 * s}, {10 * s, 100 * s}, {100 * s, 101 * s}}, 40*s)
+	want := []scenes.Span{{0, 10 * s}, {10 * s, 40 * s}, {40 * s, 70 * s}, {70 * s, 100 * s}, {100 * s, 101 * s}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if same := scenes.SplitLong(want, 0); !slices.Equal(same, want) {
+		t.Errorf("max 0 must leave spans alone, got %v", same)
+	}
+}
+
+func TestSplitLong_NoPieceOverMaxAndNoGaps(t *testing.T) {
+	s := time.Second
+	in := []scenes.Span{{0, 307*s + 123}}
+	out := scenes.SplitLong(in, 45*s)
+	prev := time.Duration(0)
+	for _, sp := range out {
+		if sp.Start != prev || sp.End-sp.Start > 45*s || sp.End <= sp.Start {
+			t.Fatalf("bad piece %v after %v in %v", sp, prev, out)
+		}
+		prev = sp.End
+	}
+	if prev != in[0].End {
+		t.Errorf("ends at %v, want %v", prev, in[0].End)
+	}
+}

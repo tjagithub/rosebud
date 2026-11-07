@@ -137,11 +137,7 @@ func (m *Model) View() tea.View {
 		if m.shown != "" {
 			b.WriteString(m.framePane())
 		}
-		for _, p := range []string{h.Translation, h.Subtitle, h.Text} {
-			if p = strings.TrimSpace(p); p != "" {
-				b.WriteString(lipgloss.NewStyle().Width(w).Render(p) + "\n")
-			}
-		}
+		b.WriteString(columns(w, original(h), h.Translation) + "\n")
 	}
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -165,4 +161,23 @@ func Clock(d time.Duration) string {
 		return fmt.Sprintf("%d:%02d:%02d", s/3600, s%3600/60, s%60)
 	}
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+// original is the on-screen subtitle and the spoken text of a hit, if any.
+func original(h core.Hit) string {
+	var parts []string
+	for _, p := range []string{h.Subtitle, h.Text} {
+		if p = strings.TrimSpace(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// columns lays left and right side by side in a width of w cells.
+func columns(w int, left, right string) string {
+	half := max((w-3)/2, 8)
+	l := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(left))
+	r := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(right))
+	return lipgloss.JoinHorizontal(lipgloss.Top, l, dim.Render(" │ "), r)
 }

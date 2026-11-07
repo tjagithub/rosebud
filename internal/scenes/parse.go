@@ -80,3 +80,25 @@ func Boundaries(cuts []time.Duration, total, minLen time.Duration) []Span {
 	}
 	return append(spans, Span{start, total})
 }
+
+// SplitLong cuts spans longer than max into equal pieces; max <= 0 keeps them.
+func SplitLong(spans []Span, max time.Duration) []Span {
+	if max <= 0 {
+		return spans
+	}
+	var out []Span
+	for _, sp := range spans {
+		n := int((sp.End - sp.Start + max - 1) / max)
+		if n <= 1 {
+			out = append(out, sp)
+			continue
+		}
+		at := sp.Start
+		for i := 1; i <= n; i++ {
+			end := sp.Start + (sp.End-sp.Start)*time.Duration(i)/time.Duration(n)
+			out = append(out, Span{at, end})
+			at = end
+		}
+	}
+	return out
+}

@@ -26,6 +26,7 @@ type Stage struct {
 	Films     func(ctx context.Context, id core.FilmID) (core.Film, error)
 	Threshold float64       // ffmpeg scene score above which a frame is a cut
 	MinLen    time.Duration // shortest scene to keep
+	MaxLen    time.Duration // longer scenes are split evenly; 0 for no limit
 	HWAccel   string        // ffmpeg -hwaccel method for cut detection; empty for software
 	HWDevice  string        // ffmpeg -hwaccel_device, to pick one of several; may be empty
 }
@@ -100,7 +101,7 @@ func (s Stage) detect(ctx context.Context, file string) ([]Span, error) {
 	if err != nil {
 		return nil, err
 	}
-	filter := fmt.Sprintf("select='gt(scene,%g)',metadata=print:file=-", s.Threshold)
+	filter := fmt.Sprintf("scale=640:-2,select='gt(scene,%g)',metadata=print:file=-", s.Threshold)
 	args := []string{"-hide_banner", "-nostats"}
 	if s.HWAccel != "" {
 		args = append(args, "-hwaccel", s.HWAccel)
@@ -117,7 +118,7 @@ func (s Stage) detect(ctx context.Context, file string) ([]Span, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Boundaries(cuts, total, s.MinLen), nil
+	return SplitLong(Boundaries(cuts, total, s.MinLen), s.MaxLen), nil
 }
 
 // frame extracts one JPEG at t. It writes a .part file first so a killed

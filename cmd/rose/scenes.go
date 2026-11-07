@@ -31,6 +31,7 @@ func scenesCmd() *cobra.Command {
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
 	threshold := fs.Float64("threshold", 0.3, "ffmpeg scene score that counts as a cut")
 	minLen := fs.Duration("min-len", 2*time.Second, "shortest scene to keep")
+	maxLen := fs.Duration("max-len", 45*time.Second, "longest scene; longer takes are split evenly, 0 for no limit")
 	cmd := &cobra.Command{Use: "scenes [flags] FILE", Short: "Cut a film into scenes and extract a frame for each", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
 		ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
 		file, err := filepath.Abs(args[0])
@@ -84,7 +85,7 @@ func scenesCmd() *cobra.Command {
 			}
 		}
 		stage := scenes.Stage{
-			Exec: exec, Sink: st, Threshold: *threshold, MinLen: *minLen,
+			Exec: exec, Sink: st, Threshold: *threshold, MinLen: *minLen, MaxLen: *maxLen,
 			HWAccel: hw, HWDevice: cfg.Get("FFMPEG_HWACCEL_DEVICE"),
 			Films: func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
 		}

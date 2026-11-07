@@ -3,6 +3,7 @@ package ui_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,4 +81,19 @@ func TestEscQuits(t *testing.T) {
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Error("esc must quit")
 	}
+}
+
+func TestDetailShowsOriginalBesideTranslation(t *testing.T) {
+	f := &fakeSearch{hits: []core.Hit{hit(1, time.Second, "I'll kill you!")}}
+	tui, _ := start(t, f)
+	tui.Type("x")
+	for _, line := range strings.Split(tui.Screen().String(), "\n") {
+		if strings.Contains(line, "字幕") && strings.Contains(line, "I'll kill you!") {
+			if strings.Index(line, "字幕") > strings.Index(line, "I'll kill you!") {
+				t.Errorf("original must be on the left: %q", line)
+			}
+			return
+		}
+	}
+	t.Errorf("no line holds both columns:\n%s", tui.Screen())
 }

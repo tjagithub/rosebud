@@ -17,29 +17,59 @@ func ReadEvents(ctx context.Context, rd Reader, frames []image.Image) ([]string,
 	if len(frames) == 0 {
 		return nil, nil, nil
 	}
+	out, err := readFrames(ctx, rd, frames)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Every frame has ink, so an empty read is a model miss. Re-stack the misses
+	// together: the new layout is a new cache key and a fresh chance.
+	var miss []int
+	for i, s := range out {
+		if s == "" {
+			miss = append(miss, i)
+		}
+	}
+	if len(miss) > 0 && len(miss) < len(frames) {
+		sub := make([]image.Image, len(miss))
+		for k, i := range miss {
+			sub[k] = frames[i]
+		}
+		retry, err := readFrames(ctx, rd, sub)
+		if err != nil {
+			return nil, nil, err
+		}
+		for k, i := range miss {
+			out[i] = retry[k]
+		}
+	}
+	var issues []Issue
+	for i, s := range out {
+		if s == "" {
+			issues = append(issues, Issue{"frame " + strconv.Itoa(i), "no text read"})
+		}
+	}
+	return out, issues, nil
+}
+
+// readFrames stacks frames into pages, reads them and splits the text by band.
+func readFrames(ctx context.Context, rd Reader, frames []image.Image) ([]string, error) {
 	pages := make([]image.Image, 0, PageCount(len(frames)))
 	for i := 0; i < len(frames); i += PerPage {
 		pages = append(pages, Page(frames[i:min(i+PerPage, len(frames))]))
 	}
 	blocks, err := rd.Read(ctx, pages)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if len(blocks) != len(pages) {
-		return nil, nil, fmt.Errorf("ocr: reader returned %d pages for %d", len(blocks), len(pages))
+		return nil, fmt.Errorf("ocr: reader returned %d pages for %d", len(blocks), len(pages))
 	}
 	var out []string
-	var issues []Issue
 	for p := range pages {
 		n := min(PerPage, len(frames)-p*PerPage)
-		for b, s := range ByBand(blocks[p], PageH, BandH, n) {
-			if s == "" {
-				issues = append(issues, Issue{"frame " + strconv.Itoa(p*PerPage+b), "no text read"})
-			}
-			out = append(out, s)
-		}
+		out = append(out, ByBand(blocks[p], PageH, BandH, n)...)
 	}
-	return out, issues, nil
+	return out, nil
 }
 
 // Assign joins the text of the events starting in each scene, by scene index.

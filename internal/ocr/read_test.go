@@ -15,16 +15,19 @@ import (
 type bandReader struct {
 	texts [][]string // per page, per band; "" means no block
 	err   error
-	pages int
+	calls []int // pages sent in each Read
 }
 
 func (r *bandReader) Read(_ context.Context, pages []image.Image) ([][]ocr.Block, error) {
-	r.pages = len(pages)
+	r.calls = append(r.calls, len(pages))
 	if r.err != nil {
 		return nil, r.err
 	}
 	out := make([][]ocr.Block, len(pages))
 	for p := range pages {
+		if len(r.calls) > 1 {
+			break // retries find nothing
+		}
 		for b, s := range r.texts[p] {
 			if s != "" {
 				top := (float64(b) + 0.1) * ocr.BandH / ocr.PageH
@@ -50,8 +53,8 @@ func TestReadEventsSpansPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rd.pages != 2 {
-		t.Errorf("sent %d pages, want 2", rd.pages)
+	if !slices.Equal(rd.calls, []int{2, 1}) {
+		t.Errorf("calls = %v, want first read of 2 pages then retry of 1", rd.calls)
 	}
 	want := []string{"a", "b", "", "d", "e", "f", "g", "h", "i", "j"}
 	if !slices.Equal(got, want) {
@@ -91,6 +94,49 @@ func TestAssign(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 	if len(issues) != 1 || issues[0].Ref != "event at 30.000s" || issues[0].Reason != "overlaps no scene" {
+		t.Errorf("issues = %+v", issues)
+	}
+}
+
+func TestReadEventsRetriesEmptyFramesTogether(t *testing.T) {
+	var sizes []int
+	rd := readerFunc(func(_ context.Context, pages []image.Image) ([][]ocr.Block, error) {
+		sizes = append(sizes, len(pages))
+		out := make([][]ocr.Block, len(pages))
+		for b, s := range []string{"a", "b", "c", "", "", "f", "g", "h"} {
+			if len(sizes) == 1 && s != "" {
+				out[0] = append(out[0], ocr.Block{Top: (float64(b) + 0.1) * ocr.BandH / ocr.PageH, Text: s})
+			}
+		}
+		if len(sizes) == 2 {
+			for b, s := range []string{"d", "e"} {
+				out[0] = append(out[0], ocr.Block{Top: (float64(b) + 0.1) * ocr.BandH / ocr.PageH, Text: s})
+			}
+		}
+		return out, nil
+	})
+	got, issues, err := ocr.ReadEvents(t.Context(), rd, frames(8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a", "b", "c", "d", "e", "f", "g", "h"}; !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if len(issues) != 0 || !slices.Equal(sizes, []int{1, 1}) {
+		t.Errorf("issues=%+v reads=%v", issues, sizes)
+	}
+}
+
+func TestReadEventsKeepsIssuesWhenRetryStaysEmpty(t *testing.T) {
+	rd := &bandReader{texts: [][]string{{"a", "", "c"}}}
+	got, issues, err := ocr.ReadEvents(t.Context(), rd, frames(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []string{"a", "", "c"}) {
+		t.Errorf("got %q", got)
+	}
+	if len(issues) != 1 || issues[0].Ref != "frame 1" {
 		t.Errorf("issues = %+v", issues)
 	}
 }

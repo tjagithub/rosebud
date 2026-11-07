@@ -98,3 +98,24 @@ func TestPickEmptyLanguageFindsNothing(t *testing.T) {
 		t.Errorf("picked %+v for an empty language", got)
 	}
 }
+
+func TestPickAcceptsTwoAndThreeLetterCodes(t *testing.T) {
+	jpn := []subsrc.Track{{Pos: 0, Index: 2, Codec: "dvd_subtitle", Lang: "jpn"}}
+	for _, l := range []string{"ja", "JA", "jpn"} {
+		if _, ok := subsrc.Pick(jpn, l); !ok {
+			t.Errorf("Pick(jpn track, %q) found nothing", l)
+		}
+	}
+	if _, ok := subsrc.Pick(jpn, "en"); ok {
+		t.Error("en matched a jpn track")
+	}
+	fre := []subsrc.Track{{Codec: "subrip", Lang: "fre"}, {Pos: 1, Codec: "subrip", Lang: "fra"}}
+	for _, l := range []string{"fr", "fra", "fre"} {
+		if _, ok := subsrc.Pick(fre, l); !ok {
+			t.Errorf("French code %q found nothing", l)
+		}
+	}
+	if _, ok := subsrc.Pick([]subsrc.Track{{Codec: "subrip", Lang: "ja"}}, "jpn"); !ok {
+		t.Error("a two-letter track tag did not match jpn")
+	}
+}

@@ -79,7 +79,7 @@ func Pick(tracks []Track, lang string) (Track, bool) {
 	var best Track
 	bestScore := 0
 	for _, t := range tracks {
-		if !strings.EqualFold(t.Lang, lang) || t.Kind() == Unknown {
+		if !sameLang(t.Lang, lang) || t.Kind() == Unknown {
 			continue
 		}
 		s := 1

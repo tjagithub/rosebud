@@ -24,10 +24,10 @@ const (
 // FrameMsg carries the kitty escape that uploads the frame at Path. Data is
 // empty when the frame could not be read.
 type FrameMsg struct {
-	ID   int // the pane that asked
-	Path string
-	Data string
-	Rows int
+	ID         int // the pane that asked
+	Path       string
+	Data       string
+	Cols, Rows int
 }
 
 // Option configures the interface.
@@ -42,9 +42,15 @@ type config struct {
 // terminals that support kitty's unicode placeholders.
 func WithBundle(dir string) Option { return func(c *config) { c.bundle = dir } }
 
+// size is a width and height in cells.
+type size struct{ cols, rows int }
+
 // pane shows one frame image in a fixed slot of the terminal.
 type pane struct {
-	id, cols    int
+	id   int
+	box  size // the most cells a frame may take
+	cols int  // size of the frame on show
+
 	bundle      string
 	want, shown string // frame path being loaded, and the one on screen
 	rows        int
@@ -58,10 +64,10 @@ func (p *pane) load(rel string) tea.Cmd {
 		return nil
 	}
 	p.want = rel
-	id, cols, dir := p.id, p.cols, p.bundle
+	id, box, dir := p.id, p.box, p.bundle
 	return func() tea.Msg {
-		data, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)), id, cols)
-		return FrameMsg{ID: id, Path: rel, Data: data, Rows: rows}
+		data, cols, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)), id, box)
+		return FrameMsg{ID: id, Path: rel, Data: data, Cols: cols, Rows: rows}
 	}
 }
 
@@ -70,7 +76,7 @@ func (p *pane) onFrame(msg FrameMsg) tea.Cmd {
 	if msg.ID != p.id || msg.Path != p.want || msg.Data == "" {
 		return nil
 	}
-	p.shown, p.rows = msg.Path, msg.Rows
+	p.shown, p.cols, p.rows = msg.Path, msg.Cols, msg.Rows
 	return tea.Raw(msg.Data)
 }
 
@@ -84,12 +90,12 @@ func (m *searchScreen) frame() tea.Cmd {
 
 // loadFrame decodes a jpeg, shrinks it, and returns the kitty upload for a
 // virtual placement plus the rows it covers. Any failure returns "".
-func loadFrame(ctx context.Context, path string, id, cols int) (string, int) {
+func loadFrame(ctx context.Context, path string, id int, box size) (string, int, int) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	type result struct {
-		data string
-		rows int
+		data       string
+		cols, rows int
 	}
 	done := make(chan result, 1)
 	go func() {
@@ -106,8 +112,7 @@ func loadFrame(ctx context.Context, path string, id, cols int) (string, int) {
 		}
 		img = shrink(img, maxPixels)
 		b := img.Bounds()
-		// A cell is about twice as tall as wide.
-		rows := max(1, cols*b.Dy()/b.Dx()/2)
+		cols, rows := fit(b.Dx(), b.Dy(), box)
 		var buf bytes.Buffer
 		err = kitty.EncodeGraphics(&buf, img, &kitty.Options{
 			Action: kitty.TransmitAndPut, ID: id, Format: kitty.PNG, Transmission: kitty.Direct,
@@ -117,14 +122,26 @@ func loadFrame(ctx context.Context, path string, id, cols int) (string, int) {
 			done <- result{}
 			return
 		}
-		done <- result{buf.String(), rows}
+		done <- result{buf.String(), cols, rows}
 	}()
 	select {
 	case r := <-done:
-		return r.data, r.rows
+		return r.data, r.cols, r.rows
 	case <-ctx.Done():
-		return "", 0
+		return "", 0, 0
 	}
+}
+
+// fit is the largest size within box that keeps the proportions of a w by h
+// image. A cell is about twice as tall as wide.
+func fit(w, h int, box size) (cols, rows int) {
+	cols = box.cols
+	rows = max(1, cols*h/w/2)
+	if box.rows > 0 && rows > box.rows {
+		rows = box.rows
+		cols = max(1, rows*2*w/h)
+	}
+	return cols, rows
 }
 
 // shrink scales img down to at most max pixels wide, nearest neighbour.

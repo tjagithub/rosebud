@@ -44,7 +44,7 @@ func newSearch(src Searcher, limit int, cfg config) *searchScreen {
 	in := textinput.New()
 	in.Prompt = "search: "
 	in.Focus()
-	return &searchScreen{src: src, limit: limit, input: in, fr: pane{id: frameID, cols: frameCols, bundle: cfg.bundle}}
+	return &searchScreen{src: src, limit: limit, input: in, fr: pane{id: frameID, box: size{cols: frameCols}, bundle: cfg.bundle}}
 }
 
 func (m *searchScreen) Init() tea.Cmd { return nil }

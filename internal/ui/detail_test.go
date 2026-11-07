@@ -73,3 +73,22 @@ func TestSteppingLoadsTheNextFrame(t *testing.T) {
 		t.Errorf("stepping must upload the next frame, raw %d -> %d", n, len(tui.Raw))
 	}
 }
+
+func TestDetailFillsTheBodyAndSizesImageToIt(t *testing.T) {
+	dir := bundleWithFrames(t, "a.jpg")
+	f := &fakeSearch{hits: []core.Hit{withFrame(hit(1, time.Second, "one"), "frames/a.jpg")}}
+	tui := uitest.New(t, ui.New(f, 10, ui.WithBundle(dir)))
+	tui.Type("x")
+	tui.Press("enter")
+	lines := strings.Split(tui.Screen().String(), "\n")
+	if len(lines) != 24 {
+		t.Fatalf("screen is %d lines, want 24", len(lines))
+	}
+	if !strings.HasPrefix(lines[0], "╭") || !strings.Contains(lines[1], "1") {
+		t.Errorf("scene strip should open the screen: %q", lines[:3])
+	}
+	n := strings.Count(tui.Screen().String(), string(rune(0x10EEEE)))
+	if n < 40 {
+		t.Errorf("image uses %d cells, want it to fill the area", n)
+	}
+}

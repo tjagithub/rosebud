@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/tjagithub/rosebud/internal/core"
 )
@@ -23,7 +24,7 @@ type detailScreen struct {
 }
 
 func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
-	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, cols: 60, bundle: bundle}}
+	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}}
 }
 
 // hit is the scene on show.
@@ -45,7 +46,7 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		d.w, d.h = msg.Width, msg.Height
-		d.fr.cols = min(max(msg.Width-4, 20), 72)
+		d.fr.box = size{cols: max(d.w-2, 8), rows: max(d.h-detailChrome, 1)}
 		return d, d.fr.load(d.hit().Scene.Frame)
 	case FrameMsg:
 		return d, d.fr.onFrame(msg)
@@ -60,15 +61,52 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return d, nil
 }
 
+// detailChrome is the lines the strip, the two spare lines and the text take.
+const detailChrome = 3 + 1 + 1 + dialogueRows
+
+const dialogueRows = 4
+
+// View stacks the scene strip, a spare line, the image, a spare line, and the
+// dialogue beside the scene's details.
 func (d *detailScreen) View() string {
+	w := max(d.w, 20)
+	imgRows := max(d.h-detailChrome, 1)
+	img := lipgloss.Place(w, imgRows, lipgloss.Center, lipgloss.Center, d.image())
 	s := d.hit().Scene
-	var b strings.Builder
-	fmt.Fprintf(&b, "%d/%d  %s – %s  %s\n\n", d.i+1, len(d.hits), Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
-	if d.fr.shown != "" {
-		b.WriteString(d.fr.view() + "\n")
+	info := fmt.Sprintf("%d/%d  %s – %s  %s", d.i+1, len(d.hits), Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
+	text := lipgloss.NewStyle().Height(dialogueRows).MaxHeight(dialogueRows).Render(
+		columns(w, original(d.hit()), info+"\n"+d.hit().Translation))
+	return strings.Join([]string{d.strip(w), "", img, "", text}, "\n")
+}
+
+// image is the frame's placeholder cells, or nothing while it loads.
+func (d *detailScreen) image() string {
+	if d.fr.shown == "" {
+		return ""
 	}
-	b.WriteString(columns(max(d.w, 20), original(d.hit()), d.hit().Translation))
-	return b.String()
+	return strings.TrimSuffix(d.fr.view(), "\n")
+}
+
+// strip is a boxed row of scene numbers around the current one, with arrows
+// where there are more to the sides.
+func (d *detailScreen) strip(w int) string {
+	var parts []string
+	for i := max(d.i-2, 0); i <= min(d.i+2, len(d.hits)-1); i++ {
+		label := fmt.Sprintf("%d", d.hits[i].Scene.ID)
+		if i == d.i {
+			label = selected.Render(" " + label + " ")
+		}
+		parts = append(parts, label)
+	}
+	left, right := " ", " "
+	if d.i > 0 {
+		left = "<"
+	}
+	if d.i < len(d.hits)-1 {
+		right = ">"
+	}
+	inner := lipgloss.PlaceHorizontal(max(w-4, 1), lipgloss.Center, strings.Join(parts, "  "))
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(w).Render(left + inner + right)
 }
 
 var _ help.KeyMap = (*detailScreen)(nil)

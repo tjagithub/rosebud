@@ -13,6 +13,7 @@ import (
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/store"
+	"github.com/tjagithub/rosebud/internal/ui"
 )
 
 // runSearch prints the scenes of a bundle that match the words.
@@ -59,7 +60,7 @@ func searchCmd() *cobra.Command {
 						parts = append(parts, clip(p, 140))
 					}
 				}
-				if _, err := fmt.Fprintf(stdout, "%s  %s\n", clock(h.Scene.Start), strings.Join(parts, " | ")); err != nil {
+				if _, err := fmt.Fprintf(stdout, "%s  %s\n", ui.Clock(h.Scene.Start), strings.Join(parts, " | ")); err != nil {
 					return err
 				}
 			}
@@ -78,13 +79,4 @@ func clip(s string, n int) string {
 		return string(r[:n-1]) + "…"
 	}
 	return s
-}
-
-// clock formats d as M:SS, or H:MM:SS from an hour on.
-func clock(d time.Duration) string {
-	s := int(d.Seconds())
-	if s >= 3600 {
-		return fmt.Sprintf("%d:%02d:%02d", s/3600, s%3600/60, s%60)
-	}
-	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }

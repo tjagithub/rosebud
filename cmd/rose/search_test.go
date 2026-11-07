@@ -68,9 +68,6 @@ func TestRun_SearchPrintsTimeAndTranslation(t *testing.T) {
 }
 
 func TestRun_SearchFormatsTimeAndRejectsBadInput(t *testing.T) {
-	if got := clock(65 * time.Second); got != "1:05" {
-		t.Errorf("clock = %q", got)
-	}
 	bundle := searchBundle(t)
 	for name, args := range map[string][]string{
 		"no query":  {"--bundle", bundle},
@@ -91,5 +88,19 @@ func TestClipCutsLongTextByRunes(t *testing.T) {
 	}
 	if got := clip("abc", 3); got != "abc" {
 		t.Errorf("clip = %q", got)
+	}
+}
+
+func TestRun_TUIRejectsBadInput(t *testing.T) {
+	for name, args := range map[string][]string{
+		"no bundle": {},
+		"extra arg": {"--bundle", t.TempDir(), "x"},
+		"no db":     {"--bundle", t.TempDir()},
+		"bad limit": {"--bundle", t.TempDir(), "--limit", "0"},
+	} {
+		var out, errOut bytes.Buffer
+		if err := runTUI(t.Context(), args, &out, &errOut); err == nil {
+			t.Errorf("%s: no error", name)
+		}
 	}
 }

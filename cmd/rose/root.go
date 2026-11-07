@@ -30,7 +30,7 @@ func newRoot(d deps) *cobra.Command {
 	if tr == nil {
 		tr = parakeet
 	}
-	root.AddCommand(scenesCmd(), subsCmd(tr), ocrCmd(d.reader), translateCmd(nil), searchCmd(), cacheCmd())
+	root.AddCommand(scenesCmd(), subsCmd(tr), ocrCmd(d.reader), translateCmd(nil), searchCmd(), tuiCmd(), cacheCmd())
 	return root
 }
 

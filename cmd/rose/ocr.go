@@ -34,7 +34,7 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cobra.Command {
 	fs := flag.NewFlagSet("ocr", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
-	lang := fs.String("lang", "ja", "language code of the subtitle track to read")
+	lang := fs.String("lang", "auto", "language code of the subtitle track to read, or auto for the best bitmap track")
 	model := fs.String("model", nemotronModel, "OCR model")
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
 	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")

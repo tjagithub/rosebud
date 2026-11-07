@@ -15,11 +15,11 @@ import (
 var settings = config.Schema{
 	{Name: "FFMPEG_HWACCEL", Default: "auto", Doc: "hardware video decode for scene detection: auto, none, or a method from ffmpeg -hwaccels", Check: isHWAccelName},
 	{Name: "FFMPEG_HWACCEL_DEVICE", Default: "", Doc: "which device to decode on when there are several, such as /dev/dri/renderD129"},
-	{Name: "OCR_LANG", Default: "ja", Doc: "language code of the subtitle track to read"},
+	{Name: "OCR_LANG", Default: "auto", Doc: "language code of the subtitle track to read, or auto for the best bitmap track"},
 	{Name: "OCR_MODEL", Default: nemotronModel, Doc: "OCR model"},
 	{Name: "OCR_TIMEOUT", Default: "30m", Doc: "longest the render and OCR steps may take", Check: config.IsDuration},
 	{Name: "OCR_BATCH", Default: "16", Doc: "pages read per model start; finished batches are cached", Check: config.IsPositiveInt},
-	{Name: "TRANSLATE_LANG", Default: "ja", Doc: "language code of the scene text to translate"},
+	{Name: "TRANSLATE_LANG", Default: "auto", Doc: "language code of the scene text to translate, or auto to detect it"},
 	{Name: "TRANSLATE_BACKEND", Default: "rikai", Doc: "how to translate: rikai (ja to en) or plamo (more languages)"},
 	{Name: "TRANSLATE_MODEL", Default: "", Doc: "translation model (default: the backend's)"},
 	{Name: "TRANSLATE_REVISION", Default: "", Doc: "commit of a custom TRANSLATE_MODEL to download"},

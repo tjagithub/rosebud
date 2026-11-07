@@ -33,7 +33,7 @@ func runTranslate(ctx context.Context, args []string, stdout, stderr io.Writer, 
 func translateCmd(newTr func(model, lang string, timeout time.Duration) translate.Translator) *cobra.Command {
 	fs := flag.NewFlagSet("translate", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
-	lang := fs.String("lang", "ja", "language code of the scene text")
+	lang := fs.String("lang", "auto", "language code of the scene text, or auto to detect it")
 	backend := fs.String("backend", "rikai", "how to translate: rikai (ja to en) or plamo (more languages, runs the model's own code)")
 	model := fs.String("model", "", "translation model (default: the backend's)")
 	revision := fs.String("revision", "", "commit of --model to download (required with a custom model)")
@@ -106,6 +106,17 @@ func translateCmd(newTr func(model, lang string, timeout time.Duration) translat
 			return err
 		}
 
+		if *lang == "auto" {
+			detected, err := detectLang(ctx, st, core.FilmID(stem))
+			if err != nil {
+				return err
+			}
+			if detected == "" {
+				return &skippedError{stage: "translate", reason: "no Japanese, Chinese or Korean text found"}
+			}
+			*lang = detected
+		}
+
 		var tr translate.Translator
 		if newTr != nil {
 			tr = newTr(*model, *lang, *timeout)
@@ -153,4 +164,16 @@ func tracedExec(ex translate.Exec, w io.Writer) translate.Exec {
 		_, _ = fmt.Fprintf(w, "debug: %s %s (%v, %d bytes, err %v)\n", name, strings.Join(args, " "), time.Since(start).Round(time.Millisecond), len(out), err)
 		return out, err
 	}
+}
+
+// detectLang guesses the language of a film's scene text, or "" if it has none to translate.
+func detectLang(ctx context.Context, st *store.Store, film core.FilmID) (string, error) {
+	var lines []string
+	for l, err := range st.Texts(ctx, film) {
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, l.Subtitle, l.Text)
+	}
+	return translate.DetectLang(lines), nil
 }

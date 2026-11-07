@@ -47,9 +47,15 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	if err != nil {
 		return err
 	}
-	tr, ok := subsrc.Pick(tracks, lang)
+	var tr subsrc.Track
+	var ok bool
+	if lang == "auto" {
+		tr, ok = subsrc.PickAuto(tracks)
+	} else {
+		tr, ok = subsrc.Pick(tracks, lang)
+	}
 	if !ok {
-		return core.Skip("%s has no readable %q subtitle track", file, lang)
+		return core.Skip("%s has no readable %q subtitle track to OCR", file, lang)
 	}
 	if tr.Kind() != subsrc.Bitmap {
 		return fmt.Errorf("ocr: %s track %d is %s, not a bitmap track", file, tr.Pos, tr.Codec)

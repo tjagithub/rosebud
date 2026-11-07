@@ -165,3 +165,26 @@ func TestPickLanguageCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestPickAuto(t *testing.T) {
+	eng := subsrc.Track{Pos: 0, Codec: "dvd_subtitle", Lang: "eng"}
+	jpn := subsrc.Track{Pos: 1, Codec: "dvd_subtitle", Lang: "jpn"}
+	forced := subsrc.Track{Pos: 2, Codec: "dvd_subtitle", Lang: "jpn", Title: "Forced"}
+	srt := subsrc.Track{Pos: 3, Codec: "subrip", Lang: "jpn"}
+	for _, c := range []struct {
+		name   string
+		tracks []subsrc.Track
+		want   int // Pos, or -1 for none
+	}{
+		{"original language over english", []subsrc.Track{eng, jpn}, 1},
+		{"full over forced", []subsrc.Track{forced, jpn}, 1},
+		{"english when it is all there is", []subsrc.Track{eng}, 0},
+		{"text tracks are not for ocr", []subsrc.Track{srt}, -1},
+		{"none", nil, -1},
+	} {
+		got, ok := subsrc.PickAuto(c.tracks)
+		if c.want < 0 && ok || c.want >= 0 && (!ok || got.Pos != c.want) {
+			t.Errorf("%s: got %+v ok=%v, want pos %d", c.name, got, ok, c.want)
+		}
+	}
+}

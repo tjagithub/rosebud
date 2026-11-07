@@ -15,6 +15,7 @@ import (
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
 	"github.com/tjagithub/rosebud/internal/limit"
+	"github.com/tjagithub/rosebud/internal/lock"
 	"github.com/tjagithub/rosebud/internal/ocr"
 	"github.com/tjagithub/rosebud/internal/scenes"
 	"github.com/tjagithub/rosebud/internal/store"
@@ -74,6 +75,11 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	if err := statWithin(dbPath, 15*time.Second, os.Stat); err != nil {
 		return fmt.Errorf("no scenes for %s yet: run `rose scenes` first", file)
 	}
+	unlock, err := lock.Acquire(bundle)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	db, err := store.Open(dbPath)
 	if err != nil {
 		return err

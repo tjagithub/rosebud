@@ -14,6 +14,7 @@ import (
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
+	"github.com/tjagithub/rosebud/internal/lock"
 	"github.com/tjagithub/rosebud/internal/scenes"
 	"github.com/tjagithub/rosebud/internal/store"
 )
@@ -48,6 +49,11 @@ func runScenes(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err := os.MkdirAll(bundle, 0o755); err != nil {
 		return err
 	}
+	unlock, err := lock.Acquire(bundle)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	db, err := store.Open(filepath.Join(bundle, "rose.db"))
 	if err != nil {
 		return err

@@ -13,6 +13,7 @@ import (
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
+	"github.com/tjagithub/rosebud/internal/lock"
 	"github.com/tjagithub/rosebud/internal/scenes"
 	"github.com/tjagithub/rosebud/internal/store"
 	"github.com/tjagithub/rosebud/internal/subs"
@@ -57,6 +58,11 @@ func runSubs(ctx context.Context, args []string, stdout, stderr io.Writer, newTr
 	if _, err := os.Stat(dbPath); err != nil {
 		return fmt.Errorf("no scenes for %s yet: run `rose scenes` first", file)
 	}
+	unlock, err := lock.Acquire(bundle)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	db, err := store.Open(dbPath)
 	if err != nil {
 		return err

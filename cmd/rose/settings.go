@@ -11,6 +11,7 @@ import (
 
 // settings lists every key a stage reads from config files and ROSE_ variables.
 var settings = config.Schema{
+	{Name: "FFMPEG_HWACCEL", Default: "auto", Doc: "hardware video decode for scene detection: auto or none", Check: config.OneOf("auto", "none")},
 	{Name: "OCR_LANG", Default: "ja", Doc: "language code of the subtitle track to read"},
 	{Name: "OCR_MODEL", Default: nemotronModel, Doc: "OCR model"},
 	{Name: "OCR_TIMEOUT", Default: "30m", Doc: "longest the render and OCR steps may take", Check: config.IsDuration},
@@ -50,4 +51,13 @@ func cacheDir(cfg config.Config) (string, error) {
 		return "", err
 	}
 	return filepath.Join(base, "rosebud", "ocr"), nil
+}
+
+// hwaccelFor turns the FFMPEG_HWACCEL setting into an ffmpeg -hwaccel method,
+// or "" for software decoding.
+func hwaccelFor(setting, goos string) string {
+	if setting == "auto" && goos == "darwin" {
+		return "videotoolbox"
+	}
+	return ""
 }

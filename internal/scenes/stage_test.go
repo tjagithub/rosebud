@@ -259,3 +259,32 @@ func TestStage_RerunWithDifferentCuts(t *testing.T) {
 		t.Errorf("frames on disk = %v, want only the referenced %v", names, want)
 	}
 }
+
+func TestStage_HWAccelOnlyForDetection(t *testing.T) {
+	for _, hw := range []string{"", "videotoolbox"} {
+		fe, sink := &fakeExec{duration: "100\n", cuts: cutsOut}, &fakeSink{}
+		stage, spec, _ := newStage(t, fe, sink)
+		stage.HWAccel = hw
+		if err := stage.Run(context.Background(), spec, func(int64, int64) {}); err != nil {
+			t.Fatal(err)
+		}
+		var detect []string
+		for _, c := range fe.calls {
+			if slices.Contains(c, "-vf") {
+				detect = c
+			}
+		}
+		i := slices.Index(detect, "-hwaccel")
+		switch {
+		case hw == "" && i >= 0:
+			t.Errorf("hwaccel set with none configured: %q", detect)
+		case hw != "" && (i < 0 || detect[i+1] != hw || i > slices.Index(detect, "-i")):
+			t.Errorf("want -hwaccel %s before -i: %q", hw, detect)
+		}
+		for _, c := range fe.frameCalls() {
+			if slices.Contains(c, "-hwaccel") {
+				t.Errorf("frame grab uses hwaccel: %q", c)
+			}
+		}
+	}
+}

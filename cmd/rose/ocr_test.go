@@ -91,3 +91,13 @@ func TestLoadConfigWithoutBundleIgnoresTheWorkingDirectory(t *testing.T) {
 		t.Errorf("model %q, err %v", c.Get("OCR_MODEL"), err)
 	}
 }
+
+func TestHWAccelFor(t *testing.T) {
+	for _, c := range []struct{ setting, goos, want string }{
+		{"auto", "darwin", "videotoolbox"}, {"auto", "linux", ""}, {"none", "darwin", ""}, {"", "darwin", ""},
+	} {
+		if got := hwaccelFor(c.setting, c.goos); got != c.want {
+			t.Errorf("hwaccelFor(%q, %q) = %q, want %q", c.setting, c.goos, got, c.want)
+		}
+	}
+}

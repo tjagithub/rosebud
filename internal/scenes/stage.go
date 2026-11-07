@@ -26,6 +26,7 @@ type Stage struct {
 	Films     func(ctx context.Context, id core.FilmID) (core.Film, error)
 	Threshold float64       // ffmpeg scene score above which a frame is a cut
 	MinLen    time.Duration // shortest scene to keep
+	HWAccel   string        // ffmpeg -hwaccel method for cut detection; empty for software
 }
 
 // Run is a jobs.Stage. Frames are named by time, so those already on disk are reused. Scenes are
@@ -99,7 +100,12 @@ func (s Stage) detect(ctx context.Context, file string) ([]Span, error) {
 		return nil, err
 	}
 	filter := fmt.Sprintf("select='gt(scene,%g)',metadata=print:file=-", s.Threshold)
-	out, err = s.Exec(ctx, "ffmpeg", "-hide_banner", "-nostats", "-i", file, "-vf", filter, "-an", "-f", "null", "-")
+	args := []string{"-hide_banner", "-nostats"}
+	if s.HWAccel != "" {
+		args = append(args, "-hwaccel", s.HWAccel)
+	}
+	args = append(args, "-i", file, "-vf", filter, "-an", "-f", "null", "-")
+	out, err = s.Exec(ctx, "ffmpeg", args...)
 	if err != nil {
 		return nil, err
 	}

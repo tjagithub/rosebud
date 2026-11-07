@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -138,4 +139,14 @@ func IsPositiveInt(v string) error {
 		return fmt.Errorf("%q is not a whole number above zero", v)
 	}
 	return nil
+}
+
+// OneOf accepts only the listed values.
+func OneOf(allowed ...string) func(string) error {
+	return func(v string) error {
+		if !slices.Contains(allowed, v) {
+			return fmt.Errorf("%q is not one of %s", v, strings.Join(allowed, ", "))
+		}
+		return nil
+	}
 }

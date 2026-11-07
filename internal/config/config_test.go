@@ -119,3 +119,10 @@ func TestIsPositiveInt(t *testing.T) {
 		}
 	}
 }
+
+func TestOneOf(t *testing.T) {
+	check := config.OneOf("auto", "none")
+	if check("auto") != nil || check("none") != nil || check("gpu") == nil || check("") == nil {
+		t.Error("OneOf accepted or rejected the wrong values")
+	}
+}

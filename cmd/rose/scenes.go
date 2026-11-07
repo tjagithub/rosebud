@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -61,9 +62,14 @@ func runScenes(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		return err
 	}
 
+	cfg, err := loadConfig(ctx, bundle, os.Environ())
+	if err != nil {
+		return err
+	}
 	stage := scenes.Stage{
 		Exec: scenes.NewExec(), Sink: st, Threshold: *threshold, MinLen: *minLen,
-		Films: func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
+		HWAccel: hwaccelFor(cfg.Get("FFMPEG_HWACCEL"), runtime.GOOS),
+		Films:   func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
 	}
 	eng := engine.New(st, engine.WithStage("scenes", stage.Run))
 	defer func() { _ = eng.Close() }()

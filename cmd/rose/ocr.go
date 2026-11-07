@@ -136,8 +136,8 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 			if err != nil {
 				return err
 			}
-			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: *fps, MinInk: 400, Timeout: *timeout,
-				Masks: ms, From: from, To: to, OnIssues: issues}.Run
+			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, MinInk: 400, Timeout: *timeout,
+				Sampling: ocr.Sampling{FPS: *fps, Masks: ms, From: from, To: to}, OnIssues: issues}.Run
 		}
 		eng := engine.New(st, engine.WithStage("ocr", run))
 		defer func() { _ = eng.Close() }()

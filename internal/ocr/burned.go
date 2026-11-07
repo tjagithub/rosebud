@@ -108,22 +108,27 @@ func BurnedEvents(samples []Sample, step time.Duration, minInk int) ([]Event, []
 
 // BurnedStage reads subtitles burned into the picture: it samples the bottom
 // of the video, finds the lines of text and OCRs each. The job's "file" param names the video.
+// Sampling says which frames of the video are looked at.
+type Sampling struct {
+	FPS      int           // frames per second
+	Masks    []Mask        // areas to black out first, such as a watermark
+	From, To time.Duration // the part to read; zero To means to the end
+}
+
 type BurnedStage struct {
 	Exec     Exec
 	Store    Store
 	Reader   Reader
-	FPS      int           // frames sampled per second
 	MinInk   int           // fewest lit pixels that count as text
 	Timeout  time.Duration // for sampling the video
-	Masks    []Mask        // areas of the picture to black out first, such as a watermark
-	From, To time.Duration // the part of the video to read; zero To means to the end
+	Sampling Sampling
 	OnIssues func([]Issue)
 }
 
 // Run is a jobs.Stage. Text is written once, at the end.
 func (s BurnedStage) Run(ctx context.Context, spec core.JobSpec, progress func(done, total int64)) error {
 	file := spec.Params["file"]
-	if file == "" || s.FPS <= 0 || s.Timeout <= 0 {
+	if file == "" || s.Sampling.FPS <= 0 || s.Timeout <= 0 {
 		return errors.New("ocr: burned-in stage needs a file, a positive FPS and a timeout")
 	}
 	scenes, err := Stage{Store: s.Store}.scenes(ctx, spec.Film)
@@ -134,7 +139,7 @@ func (s BurnedStage) Run(ctx context.Context, spec core.JobSpec, progress func(d
 	if err != nil {
 		return err
 	}
-	step := time.Second / time.Duration(s.FPS)
+	step := time.Second / time.Duration(s.Sampling.FPS)
 	events, imgs := BurnedEvents(samples, step, s.MinInk)
 	if len(events) == 0 {
 		return core.Skip("no burned-in subtitles found in %s", file)
@@ -162,18 +167,18 @@ func (s BurnedStage) Run(ctx context.Context, spec core.JobSpec, progress func(d
 
 // sample decodes the bottom band of the video FPS times a second.
 func (s BurnedStage) sample(ctx context.Context, file string) ([]Sample, error) {
-	vf := "fps=" + strconv.Itoa(s.FPS) + ","
-	for _, m := range s.Masks {
+	vf := "fps=" + strconv.Itoa(s.Sampling.FPS) + ","
+	for _, m := range s.Sampling.Masks {
 		vf += m.Filter() + ","
 	}
 	vf += "crop=iw:ih*0.3:0:ih*0.68,scale=1280:-2,format=gray"
 	out, err := limit.Run(ctx, "ffmpeg", s.Timeout, func(ctx context.Context) ([]byte, error) {
 		args := []string{"-nostdin", "-v", "error"}
-		if s.From > 0 {
-			args = append(args, "-ss", fmt.Sprintf("%.3f", s.From.Seconds()))
+		if s.Sampling.From > 0 {
+			args = append(args, "-ss", fmt.Sprintf("%.3f", s.Sampling.From.Seconds()))
 		}
-		if s.To > 0 {
-			args = append(args, "-to", fmt.Sprintf("%.3f", s.To.Seconds()))
+		if s.Sampling.To > 0 {
+			args = append(args, "-to", fmt.Sprintf("%.3f", s.Sampling.To.Seconds()))
 		}
 		args = append(args, "-i", file, "-an", "-sn", "-vf", vf, "-f", "image2pipe", "-c:v", "png", "-")
 		return s.Exec(ctx, "ffmpeg", args...)
@@ -188,7 +193,7 @@ func (s BurnedStage) sample(ctx context.Context, file string) ([]Sample, error) 
 		if err != nil {
 			return nil, fmt.Errorf("ocr: decode sample %d of %s: %w", len(samples), file, err)
 		}
-		at := s.From + time.Duration(len(samples))*time.Second/time.Duration(s.FPS)
+		at := s.Sampling.From + time.Duration(len(samples))*time.Second/time.Duration(s.Sampling.FPS)
 		samples = append(samples, Sample{At: at, Img: Whiten(img, 200)})
 	}
 	return samples, nil

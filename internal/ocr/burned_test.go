@@ -84,7 +84,7 @@ func TestBurnedStageReadsTextIntoScenes(t *testing.T) {
 	}
 	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(1)}, {ID: 2, Start: sec(1), End: sec(3)}}}
 	rd := &bandReader{texts: [][]string{{"hello there"}}}
-	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: 1, Timeout: time.Minute, MinInk: 20}
+	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, Sampling: ocr.Sampling{FPS: 1}, Timeout: time.Minute, MinInk: 20}
 	if err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv"}), noProgress); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestBurnedStageSkipsWhenThereIsNoText(t *testing.T) {
 		return pngBytes(t, textImg(image.Rectangle{}, 0)), nil
 	}
 	st := &memStore{scenes: []core.Scene{{ID: 1, End: sec(5)}}}
-	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: &bandReader{}, FPS: 1, Timeout: time.Minute, MinInk: 20}
+	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: &bandReader{}, Sampling: ocr.Sampling{FPS: 1}, Timeout: time.Minute, MinInk: 20}
 	err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv"}), noProgress)
 	if err == nil || err.Error()[:len(core.SkipPrefix)] != core.SkipPrefix || st.set {
 		t.Errorf("err = %v, wrote = %v", err, st.set)
@@ -137,8 +137,8 @@ func TestBurnedStageAppliesMasksAndRange(t *testing.T) {
 	m, _ := ocr.ParseMask("100,50,0,0")
 	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(100)}}}
 	rd := &bandReader{texts: [][]string{{"hi"}}}
-	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: 1, Timeout: time.Minute, MinInk: 20,
-		Masks: []ocr.Mask{m}, From: sec(30), To: sec(60)}
+	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, Timeout: time.Minute, MinInk: 20,
+		Sampling: ocr.Sampling{FPS: 1, Masks: []ocr.Mask{m}, From: sec(30), To: sec(60)}}
 	if err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv"}), noProgress); err != nil {
 		t.Fatal(err)
 	}

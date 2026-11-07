@@ -28,6 +28,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "scenes":
 		return runScenes(ctx, args[1:], stdout, stderr)
+	case "subs":
+		return runSubs(ctx, args[1:], stdout, stderr, parakeet)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

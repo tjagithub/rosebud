@@ -8,6 +8,7 @@ import (
 	"iter"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tjagithub/rosebud/internal/core"
 )
@@ -59,14 +60,40 @@ func (s *Store) ReplaceScenes(ctx context.Context, film core.FilmID, scenes []Sc
 		return err
 	}
 	ins, err := tx.PrepareContext(ctx,
-		`insert into scenes(film, start_ns, end_ns, frame, text) values (?, ?, ?, ?, ?)`)
+		`insert into scenes(film, start_ns, end_ns, frame, text, norm) values (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = ins.Close() }()
 	for _, sc := range scenes {
-		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, sc.Text); err != nil {
+		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, sc.Text, Fold(sc.Text)); err != nil {
 			return fmt.Errorf("store: scenes for film %q: %w", film, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// SetText sets the spoken text of a film's scenes, keeping the scenes themselves.
+// It is all or nothing: a scene that is not this film's fails the whole call.
+func (s *Store) SetText(ctx context.Context, film core.FilmID, text map[core.SceneID]string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	upd, err := tx.PrepareContext(ctx, `update scenes set text = ?, norm = ? where id = ? and film = ?`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = upd.Close() }()
+	for id, t := range text {
+		res, err := upd.ExecContext(ctx, t, Fold(t), id, film)
+		if err != nil {
+			return fmt.Errorf("store: text for film %q: %w", film, err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n != 1 {
+			return fmt.Errorf("store: scene %d is not in film %q", id, film)
 		}
 	}
 	return tx.Commit()
@@ -92,24 +119,49 @@ func (s *Store) Scenes(ctx context.Context, film core.FilmID) iter.Seq2[core.Sce
 	}, `select id, film, start_ns, end_ns, frame from scenes where film = ? order by start_ns, id`, film)
 }
 
-// Search runs a full-text match, best first. Every word must match.
+// Search finds scenes whose folded text holds every word, best first. Words
+// under three characters, which the trigram index cannot see, match as substrings.
 func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, error) {
-	match := matchExpr(q.Text)
-	if match == "" {
+	var long, short []string
+	for _, w := range strings.Fields(Fold(q.Text)) {
+		if utf8.RuneCountInString(w) < 3 {
+			short = append(short, w)
+		} else {
+			long = append(long, w)
+		}
+	}
+	if len(long)+len(short) == 0 {
 		return nil, errors.New("store: empty search text")
 	}
 	if q.Limit <= 0 {
 		return nil, fmt.Errorf("store: search limit must be positive, got %d", q.Limit)
 	}
+
+	stmt := `select s.id, s.film, s.start_ns, s.end_ns, s.frame, s.text, `
+	order := `s.id`
+	var args []any
+	if len(long) > 0 {
+		stmt += `-bm25(scene_fts) from scene_fts join scenes s on s.id = scene_fts.rowid where scene_fts match ?`
+		order = `bm25(scene_fts), s.id`
+		args = append(args, matchExpr(long))
+	} else {
+		stmt += `0.0 from scenes s where 1`
+	}
+	stmt += ` and (? = '' or s.film = ?)`
+	args = append(args, q.Film, q.Film)
+	for _, w := range short {
+		stmt += ` and s.norm like ? escape '\'`
+		args = append(args, "%"+likeEscaper.Replace(w)+"%")
+	}
+	stmt += ` order by ` + order + ` limit ?`
+	args = append(args, q.Limit)
+
 	rows := query(ctx, s.db, func(r *sql.Rows) (h core.Hit, err error) {
 		var start, end int64
 		err = r.Scan(&h.Scene.ID, &h.Scene.Film, &start, &end, &h.Scene.Frame, &h.Text, &h.Score)
 		h.Scene.Start, h.Scene.End = time.Duration(start), time.Duration(end)
 		return h, err
-	}, `select s.id, s.film, s.start_ns, s.end_ns, s.frame, s.text, -bm25(scene_fts)
-		from scene_fts join scenes s on s.id = scene_fts.rowid
-		where scene_fts match ? and (? = '' or s.film = ?)
-		order by bm25(scene_fts), s.id limit ?`, match, q.Film, q.Film, q.Limit)
+	}, stmt, args...)
 
 	var hits []core.Hit
 	for h, err := range rows {
@@ -121,13 +173,15 @@ func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, err
 	return hits, nil
 }
 
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 // matchExpr quotes each word so user text can never be FTS5 syntax.
-func matchExpr(text string) string {
-	words := strings.Fields(text)
+func matchExpr(words []string) string {
+	quoted := make([]string, len(words))
 	for i, w := range words {
-		words[i] = `"` + strings.ReplaceAll(w, `"`, `""`) + `"`
+		quoted[i] = `"` + strings.ReplaceAll(w, `"`, `""`) + `"`
 	}
-	return strings.Join(words, " ")
+	return strings.Join(quoted, " ")
 }
 
 // query streams rows through scan, stopping on error or when the caller does.

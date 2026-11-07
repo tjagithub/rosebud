@@ -70,8 +70,8 @@ func TestNew(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 1 {
-		t.Errorf("user_version = %d, %v; want 1", v, err)
+	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 2 {
+		t.Errorf("user_version = %d, %v; want 2", v, err)
 	}
 }
 
@@ -211,5 +211,134 @@ func TestStore_ReplaceScenesDropsOldText(t *testing.T) {
 	}
 	if hits, err := s.Search(ctx, core.SearchQuery{Text: "kane", Limit: 10}); err != nil || len(hits) != 1 {
 		t.Errorf("new text lost: %+v, %v", hits, err)
+	}
+}
+
+func sceneIDs(t *testing.T, s *store.Store, film core.FilmID) []core.SceneID {
+	t.Helper()
+	var ids []core.SceneID
+	for _, sc := range collect(t, s.Scenes(context.Background(), film)) {
+		ids = append(ids, sc.ID)
+	}
+	return ids
+}
+
+func hitCount(t *testing.T, s *store.Store, text string) int {
+	t.Helper()
+	hits, err := s.Search(context.Background(), core.SearchQuery{Text: text, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(hits)
+}
+
+func TestStore_SetText(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "one"), line(2, "two"))
+	ids := sceneIDs(t, s, "a")
+
+	if err := s.SetText(ctx, "a", map[core.SceneID]string{ids[0]: "rosebud", ids[1]: "kane"}); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount(t, s, "rosebud") != 1 || hitCount(t, s, "kane") != 1 {
+		t.Error("new text is not searchable")
+	}
+	if hitCount(t, s, "one") != 0 {
+		t.Error("old text still matches")
+	}
+	if got := sceneIDs(t, s, "a"); len(got) != 2 || got[0] != ids[0] || got[1] != ids[1] {
+		t.Errorf("scene IDs changed: %v, want %v", got, ids)
+	}
+
+	if err := s.SetText(ctx, "a", map[core.SceneID]string{ids[0]: ""}); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount(t, s, "rosebud") != 0 || hitCount(t, s, "kane") != 1 {
+		t.Error("an empty string should clear only that scene")
+	}
+}
+
+func TestStore_SetTextIsAllOrNothing(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "one"))
+	put(t, s, core.Film{ID: "b"}, line(1, "other"))
+	a, b := sceneIDs(t, s, "a"), sceneIDs(t, s, "b")
+
+	tests := []struct {
+		name string
+		text map[core.SceneID]string
+	}{
+		{"unknown scene", map[core.SceneID]string{a[0]: "changed", 9999: "x"}},
+		{"another film's scene", map[core.SceneID]string{a[0]: "changed", b[0]: "x"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := s.SetText(ctx, "a", tt.text); err == nil {
+				t.Fatal("expected an error")
+			}
+			if hitCount(t, s, "changed") != 0 || hitCount(t, s, "one") != 1 || hitCount(t, s, "other") != 1 {
+				t.Error("a failed SetText changed something")
+			}
+		})
+	}
+}
+
+func TestStore_SearchFolds(t *testing.T) {
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "サンドイッチを食べる"), line(2, "Rosebud"), line(3, "other"))
+	for _, tt := range []struct {
+		name, text string
+		want       int
+	}{
+		{"hiragana finds katakana", "さんどいっち", 1},
+		{"katakana finds katakana", "サンドイッチ", 1},
+		{"fullwidth finds ASCII", "ＲＯＳＥＢＵＤ", 1},
+		{"case is ignored", "ROSEBUD", 1},
+		{"substring inside a word", "ndoi", 0},
+		{"unrelated", "ぱすた", 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hitCount(t, s, tt.text); got != tt.want {
+				t.Errorf("hits for %q = %d, want %d", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
+// Trigram search cannot see terms under three characters, which Japanese
+// words often are, so those must still match as substrings.
+func TestStore_SearchShortTerms(t *testing.T) {
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"},
+		line(1, "村川さんやめてください"), line(2, "100% sure"), line(3, "ab"), line(4, "a_b"), line(5, "沈めろ"))
+	for _, tt := range []struct {
+		name, text string
+		want       int
+	}{
+		{"two characters", "さん", 1},
+		{"two kanji", "沈め", 1},
+		{"one character", "沈", 1},
+		{"short with long", "さん ください", 1},
+		{"short misses", "さん 沈め", 0},
+		{"percent is literal", "%", 1},
+		{"underscore is literal", "_", 1},
+		{"backslash is literal", `\`, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hitCount(t, s, tt.text); got != tt.want {
+				t.Errorf("hits for %q = %d, want %d", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStore_SearchKeepsOriginalText(t *testing.T) {
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "サンドイッチ"))
+	hits, err := s.Search(context.Background(), core.SearchQuery{Text: "さんどいっち", Limit: 5})
+	if err != nil || len(hits) != 1 || hits[0].Text != "サンドイッチ" {
+		t.Fatalf("hits = %+v, %v; want the original katakana back", hits, err)
 	}
 }

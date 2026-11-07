@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
-	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,13 +32,12 @@ func TestRun_OCRRejectsBadInput(t *testing.T) {
 
 func TestRun_OCRHelpDocumentsTimeout(t *testing.T) {
 	var out, errOut bytes.Buffer
-	err := runOCR(t.Context(), []string{"-h"}, &out, &errOut, nil)
-	if !errors.Is(err, flag.ErrHelp) {
-		t.Fatalf("err = %v, want ErrHelp", err)
+	if err := runOCR(t.Context(), []string{"-h"}, &out, &errOut, nil); err != nil {
+		t.Fatalf("err = %v", err)
 	}
 	for _, want := range []string{"--timeout", "--verbose", "--debug"} {
-		if !strings.Contains(errOut.String(), want) {
-			t.Errorf("help lacks %s:\n%s", want, errOut.String())
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("help lacks %s:\n%s", want, out.String())
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,85 +23,88 @@ import (
 // runScenes cuts a film into scenes and extracts a frame for each, into a
 // bundle directory next to the file.
 func runScenes(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	return execute(ctx, scenesCmd(), args, stdout, stderr)
+}
+
+func scenesCmd() *cobra.Command {
 	fs := flag.NewFlagSet("scenes", flag.ContinueOnError)
-	fs.SetOutput(stderr)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
 	threshold := fs.Float64("threshold", 0.3, "ffmpeg scene score that counts as a cut")
 	minLen := fs.Duration("min-len", 2*time.Second, "shortest scene to keep")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: rose scenes [flags] FILE")
-	}
-	file, err := filepath.Abs(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	if _, err := os.Stat(file); err != nil {
-		return err
-	}
-
-	stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-	bundle := *bundleDir
-	if bundle == "" {
-		bundle = filepath.Join(filepath.Dir(file), stem+".film")
-	}
-	if err := os.MkdirAll(bundle, 0o755); err != nil {
-		return err
-	}
-	unlock, err := lock.Acquire(bundle)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	db, err := store.Open(filepath.Join(bundle, "rose.db"))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-	st, err := store.New(ctx, db)
-	if err != nil {
-		return err
-	}
-	film := core.Film{ID: core.FilmID(stem), Title: stem, Bundle: bundle}
-	if err := st.PutFilm(ctx, film); err != nil {
-		return err
-	}
-
-	cfg, err := loadConfig(ctx, bundle, os.Environ())
-	if err != nil {
-		return err
-	}
-	exec := scenes.NewExec()
-	hw := hwaccelFor(cfg.Get("FFMPEG_HWACCEL"), runtime.GOOS)
-	if hw != "" && hw != "auto" {
-		avail, err := scenes.HWAccels(ctx, exec, 15*time.Second)
+	cmd := &cobra.Command{Use: "scenes [flags] FILE", Short: "Cut a film into scenes and extract a frame for each", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
+		ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
+		file, err := filepath.Abs(args[0])
 		if err != nil {
 			return err
 		}
-		if err := scenes.CheckHWAccel(hw, avail); err != nil {
-			return fmt.Errorf("FFMPEG_HWACCEL: %w", err)
+		if _, err := os.Stat(file); err != nil {
+			return err
 		}
-	}
-	stage := scenes.Stage{
-		Exec: exec, Sink: st, Threshold: *threshold, MinLen: *minLen,
-		HWAccel: hw, HWDevice: cfg.Get("FFMPEG_HWACCEL_DEVICE"),
-		Films: func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
-	}
-	eng := engine.New(st, engine.WithStage("scenes", stage.Run))
-	defer func() { _ = eng.Close() }()
 
-	info, err := runJob(ctx, eng, core.JobSpec{Stage: "scenes", Film: film.ID, Params: map[string]string{"file": file}}, stderr)
-	if err != nil {
+		stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+		bundle := *bundleDir
+		if bundle == "" {
+			bundle = filepath.Join(filepath.Dir(file), stem+".film")
+		}
+		if err := os.MkdirAll(bundle, 0o755); err != nil {
+			return err
+		}
+		unlock, err := lock.Acquire(bundle)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		db, err := store.Open(filepath.Join(bundle, "rose.db"))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		st, err := store.New(ctx, db)
+		if err != nil {
+			return err
+		}
+		film := core.Film{ID: core.FilmID(stem), Title: stem, Bundle: bundle}
+		if err := st.PutFilm(ctx, film); err != nil {
+			return err
+		}
+
+		cfg, err := loadConfig(ctx, bundle, os.Environ())
+		if err != nil {
+			return err
+		}
+		exec := scenes.NewExec()
+		hw := hwaccelFor(cfg.Get("FFMPEG_HWACCEL"), runtime.GOOS)
+		if hw != "" && hw != "auto" {
+			avail, err := scenes.HWAccels(ctx, exec, 15*time.Second)
+			if err != nil {
+				return err
+			}
+			if err := scenes.CheckHWAccel(hw, avail); err != nil {
+				return fmt.Errorf("FFMPEG_HWACCEL: %w", err)
+			}
+		}
+		stage := scenes.Stage{
+			Exec: exec, Sink: st, Threshold: *threshold, MinLen: *minLen,
+			HWAccel: hw, HWDevice: cfg.Get("FFMPEG_HWACCEL_DEVICE"),
+			Films: func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
+		}
+		eng := engine.New(st, engine.WithStage("scenes", stage.Run))
+		defer func() { _ = eng.Close() }()
+
+		info, err := runJob(ctx, eng, core.JobSpec{Stage: "scenes", Film: film.ID, Params: map[string]string{"file": file}}, stderr)
+		if err != nil {
+			return err
+		}
+		noun := "scenes"
+		if info.Total == 1 {
+			noun = "scene"
+		}
+		_, err = fmt.Fprintf(stdout, "%d %s in %s\n", info.Total, noun, bundle)
 		return err
-	}
-	noun := "scenes"
-	if info.Total == 1 {
-		noun = "scene"
-	}
-	_, err = fmt.Fprintf(stdout, "%d %s in %s\n", info.Total, noun, bundle)
-	return err
+	}}
+	cmd.Flags().AddGoFlagSet(fs)
+	_ = cmd.MarkFlagDirname("bundle")
+	return cmd
 }
 
 // runJob starts spec, prints progress, and returns the job once it ends.

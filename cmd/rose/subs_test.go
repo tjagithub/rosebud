@@ -60,7 +60,7 @@ func TestRun_Subs(t *testing.T) {
 	}
 	var model string
 	out.Reset()
-	if err := runSubs(t.Context(), []string{"-lang", "ja", file}, &out, &errOut, fakeTr(&model)); err != nil {
+	if err := runSubs(t.Context(), []string{"--lang", "ja", file}, &out, &errOut, fakeTr(&model)); err != nil {
 		t.Fatalf("subs: %v\nstderr: %s", err, errOut.String())
 	}
 	if model != "mlx-community/parakeet-tdt_ctc-0.6b-ja" {
@@ -96,7 +96,7 @@ func TestRun_SubsModelOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	var model string
-	if err := runSubs(t.Context(), []string{"-model", "my/model", file}, &out, &out, fakeTr(&model)); err != nil {
+	if err := runSubs(t.Context(), []string{"--model", "my/model", file}, &out, &out, fakeTr(&model)); err != nil {
 		t.Fatal(err)
 	}
 	if model != "my/model" {
@@ -116,7 +116,7 @@ func TestRun_SubsErrors(t *testing.T) {
 	}{
 		{"no file", nil, "usage"},
 		{"missing file", []string{"/nonexistent/film.mkv"}, "film.mkv"},
-		{"unknown language", []string{"-lang", "xx", file}, "xx"},
+		{"unknown language", []string{"--lang", "xx", file}, "xx"},
 		{"scenes not run", []string{file}, "scenes"},
 	}
 	for _, tt := range tests {

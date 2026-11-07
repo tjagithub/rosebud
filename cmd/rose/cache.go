@@ -4,29 +4,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"time"
 )
 
 // runCache implements `rose cache clear`, which deletes cached results.
-func runCache(ctx context.Context, args []string, stdout, _ io.Writer) error {
-	if len(args) != 1 || args[0] != "clear" {
-		return errors.New("usage: rose cache clear")
+func runCache(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	return execute(ctx, cacheCmd(), args, stdout, stderr)
+}
+
+func cacheCmd() *cobra.Command {
+	cache := &cobra.Command{
+		Use:   "cache",
+		Short: "Manage cached results",
+		Args:  cobra.NoArgs,
+		RunE:  func(*cobra.Command, []string) error { return errors.New("usage: rose cache clear") },
 	}
-	cfg, err := loadConfig(ctx, "", os.Environ())
-	if err != nil {
-		return err
-	}
-	dir, err := cacheDir(cfg)
-	if err != nil {
-		return err
-	}
-	if err := removeWithin(dir, 30*time.Second); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(stdout, "cleared %s\n", dir)
-	return err
+	cache.AddCommand(&cobra.Command{
+		Use:   "clear",
+		Short: "Delete cached results",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			cfg, err := loadConfig(c.Context(), "", os.Environ())
+			if err != nil {
+				return err
+			}
+			dir, err := cacheDir(cfg)
+			if err != nil {
+				return err
+			}
+			if err := removeWithin(dir, 30*time.Second); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(c.OutOrStdout(), "cleared %s\n", dir)
+			return err
+		},
+	})
+	return cache
 }
 
 // removeWithin deletes dir, giving up after d in case the disk stalls.

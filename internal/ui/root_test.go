@@ -1,6 +1,7 @@
 package ui_test
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -88,4 +89,11 @@ func TestPopNeverRemovesTheFirstScreen(t *testing.T) {
 	tui.Send(ui.PopMsg{})
 	tui.Send(ui.CloseMsg{})
 	tui.Screen().Contains("search:")
+}
+
+func TestOverlayIsDrawnOverTheScreenNotInsteadOfIt(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{})
+	tui.Send(ui.PushMsg{Screen: &note{text: "LEFT-EDGE" + strings.Repeat(" ", 40) + "RIGHT-EDGE\n\n\n\n\n"}})
+	tui.Send(ui.OpenMsg{Overlay: &note{text: "POPUP"}})
+	tui.Screen().Contains("POPUP", "LEFT-EDGE", "RIGHT-EDGE")
 }

@@ -114,10 +114,20 @@ func (m *Model) sendSize(s Screen) tea.Cmd {
 
 func (m *Model) View() tea.View {
 	out := m.stack[len(m.stack)-1].View()
-	if n := len(m.overlays); n > 0 {
-		out = lipgloss.Place(m.size.Width, m.size.Height, lipgloss.Center, lipgloss.Center, m.overlays[n-1].View())
+	for _, o := range m.overlays {
+		out = over(out, o.View())
 	}
 	v := tea.NewView(out)
 	v.AltScreen = true
 	return v
+}
+
+// over draws top, centred, above base; base shows around it.
+func over(base, top string) string {
+	x := max((lipgloss.Width(base)-lipgloss.Width(top))/2, 0)
+	y := max((lipgloss.Height(base)-lipgloss.Height(top))/2, 0)
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(top).X(x).Y(y).Z(1),
+	).Render()
 }

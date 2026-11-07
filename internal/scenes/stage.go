@@ -27,6 +27,7 @@ type Stage struct {
 	Threshold float64       // ffmpeg scene score above which a frame is a cut
 	MinLen    time.Duration // shortest scene to keep
 	HWAccel   string        // ffmpeg -hwaccel method for cut detection; empty for software
+	HWDevice  string        // ffmpeg -hwaccel_device, to pick one of several; may be empty
 }
 
 // Run is a jobs.Stage. Frames are named by time, so those already on disk are reused. Scenes are
@@ -103,6 +104,9 @@ func (s Stage) detect(ctx context.Context, file string) ([]Span, error) {
 	args := []string{"-hide_banner", "-nostats"}
 	if s.HWAccel != "" {
 		args = append(args, "-hwaccel", s.HWAccel)
+		if s.HWDevice != "" {
+			args = append(args, "-hwaccel_device", s.HWDevice)
+		}
 	}
 	args = append(args, "-i", file, "-vf", filter, "-an", "-f", "null", "-")
 	out, err = s.Exec(ctx, "ffmpeg", args...)

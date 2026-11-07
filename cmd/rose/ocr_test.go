@@ -94,10 +94,18 @@ func TestLoadConfigWithoutBundleIgnoresTheWorkingDirectory(t *testing.T) {
 
 func TestHWAccelFor(t *testing.T) {
 	for _, c := range []struct{ setting, goos, want string }{
-		{"auto", "darwin", "videotoolbox"}, {"auto", "linux", ""}, {"none", "darwin", ""}, {"", "darwin", ""},
+		{"auto", "darwin", "videotoolbox"}, {"auto", "linux", "auto"}, {"cuda", "linux", "cuda"}, {"cuda", "darwin", "cuda"}, {"none", "darwin", ""}, {"", "darwin", ""},
 	} {
 		if got := hwaccelFor(c.setting, c.goos); got != c.want {
 			t.Errorf("hwaccelFor(%q, %q) = %q, want %q", c.setting, c.goos, got, c.want)
+		}
+	}
+}
+
+func TestIsHWAccelName(t *testing.T) {
+	for v, ok := range map[string]bool{"auto": true, "none": true, "cuda": true, "d3d11va": true, "videotoolbox": true, "": false, "CUDA": false, "a b": false, "../x": false} {
+		if got := isHWAccelName(v) == nil; got != ok {
+			t.Errorf("isHWAccelName(%q) ok = %t, want %t", v, got, ok)
 		}
 	}
 }

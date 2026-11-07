@@ -19,7 +19,8 @@ Plain `KEY=VALUE` lines, such as `OCR_MODEL=mlx-community/Nemotron-Parse-2.0-8bi
 Later sources win: the defaults, `rosebud/rose.conf` in your user config
 directory, `rose.conf` in a film's `.film` bundle, `ROSE_`-prefixed
 environment variables (`ROSE_OCR_MODEL`), then command-line flags.
-Keys: `FFMPEG_HWACCEL` (`auto` uses VideoToolbox on macOS, `none` turns it off), `OCR_LANG`, `OCR_MODEL`, `OCR_TIMEOUT`, `OCR_BATCH`, `CACHE_DIR`,
+Keys: `FFMPEG_HWACCEL` (`auto`, `none`, or a method from `ffmpeg -hwaccels` such as `cuda`;
+only VideoToolbox is tested), `FFMPEG_HWACCEL_DEVICE`, `OCR_LANG`, `OCR_MODEL`, `OCR_TIMEOUT`, `OCR_BATCH`, `CACHE_DIR`,
 `CACHE_MAX_MB`, `CACHE_MAX_AGE`.
 
 OCR results are cached per page in your user cache directory, trimmed by size

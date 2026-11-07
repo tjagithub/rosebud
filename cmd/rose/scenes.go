@@ -66,10 +66,21 @@ func runScenes(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err != nil {
 		return err
 	}
+	exec := scenes.NewExec()
+	hw := hwaccelFor(cfg.Get("FFMPEG_HWACCEL"), runtime.GOOS)
+	if hw != "" && hw != "auto" {
+		avail, err := scenes.HWAccels(ctx, exec, 15*time.Second)
+		if err != nil {
+			return err
+		}
+		if err := scenes.CheckHWAccel(hw, avail); err != nil {
+			return fmt.Errorf("FFMPEG_HWACCEL: %w", err)
+		}
+	}
 	stage := scenes.Stage{
-		Exec: scenes.NewExec(), Sink: st, Threshold: *threshold, MinLen: *minLen,
-		HWAccel: hwaccelFor(cfg.Get("FFMPEG_HWACCEL"), runtime.GOOS),
-		Films:   func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
+		Exec: exec, Sink: st, Threshold: *threshold, MinLen: *minLen,
+		HWAccel: hw, HWDevice: cfg.Get("FFMPEG_HWACCEL_DEVICE"),
+		Films: func(context.Context, core.FilmID) (core.Film, error) { return film, nil },
 	}
 	eng := engine.New(st, engine.WithStage("scenes", stage.Run))
 	defer func() { _ = eng.Close() }()

@@ -288,3 +288,29 @@ func TestStage_HWAccelOnlyForDetection(t *testing.T) {
 		}
 	}
 }
+
+func TestStage_HWDevice(t *testing.T) {
+	for _, c := range []struct {
+		hw, dev string
+		want    bool
+	}{
+		{"vaapi", "/dev/dri/renderD129", true}, {"vaapi", "", false}, {"", "/dev/dri/renderD129", false},
+	} {
+		fe, sink := &fakeExec{duration: "100\n", cuts: cutsOut}, &fakeSink{}
+		stage, spec, _ := newStage(t, fe, sink)
+		stage.HWAccel, stage.HWDevice = c.hw, c.dev
+		if err := stage.Run(context.Background(), spec, func(int64, int64) {}); err != nil {
+			t.Fatal(err)
+		}
+		var detect []string
+		for _, call := range fe.calls {
+			if slices.Contains(call, "-vf") {
+				detect = call
+			}
+		}
+		i := slices.Index(detect, "-hwaccel_device")
+		if (i >= 0) != c.want || (c.want && detect[i+1] != c.dev) {
+			t.Errorf("%+v: args %q", c, detect)
+		}
+	}
+}

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/tjagithub/rosebud/internal/config"
@@ -11,7 +13,8 @@ import (
 
 // settings lists every key a stage reads from config files and ROSE_ variables.
 var settings = config.Schema{
-	{Name: "FFMPEG_HWACCEL", Default: "auto", Doc: "hardware video decode for scene detection: auto or none", Check: config.OneOf("auto", "none")},
+	{Name: "FFMPEG_HWACCEL", Default: "auto", Doc: "hardware video decode for scene detection: auto, none, or a method from ffmpeg -hwaccels", Check: isHWAccelName},
+	{Name: "FFMPEG_HWACCEL_DEVICE", Default: "", Doc: "which device to decode on when there are several, such as /dev/dri/renderD129"},
 	{Name: "OCR_LANG", Default: "ja", Doc: "language code of the subtitle track to read"},
 	{Name: "OCR_MODEL", Default: nemotronModel, Doc: "OCR model"},
 	{Name: "OCR_TIMEOUT", Default: "30m", Doc: "longest the render and OCR steps may take", Check: config.IsDuration},
@@ -56,8 +59,25 @@ func cacheDir(cfg config.Config) (string, error) {
 // hwaccelFor turns the FFMPEG_HWACCEL setting into an ffmpeg -hwaccel method,
 // or "" for software decoding.
 func hwaccelFor(setting, goos string) string {
-	if setting == "auto" && goos == "darwin" {
-		return "videotoolbox"
+	switch setting {
+	case "", "none":
+		return ""
+	case "auto":
+		if goos == "darwin" {
+			return "videotoolbox"
+		}
+		return "auto"
 	}
-	return ""
+	return setting
+}
+
+var hwName = regexp.MustCompile(`^[a-z0-9_]+$`)
+
+// isHWAccelName accepts auto, none, or a lower-case ffmpeg method name. Whether
+// this ffmpeg offers the method is checked when a run starts.
+func isHWAccelName(v string) error {
+	if !hwName.MatchString(v) {
+		return fmt.Errorf("%q is not auto, none or an ffmpeg method such as cuda or vaapi", v)
+	}
+	return nil
 }

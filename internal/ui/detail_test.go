@@ -92,3 +92,29 @@ func TestDetailFillsTheBodyAndSizesImageToIt(t *testing.T) {
 		t.Errorf("image uses %d cells, want it to fill the area", n)
 	}
 }
+
+func TestFilterNarrowsDialogueAndKeepsOnEnter(t *testing.T) {
+	hits := []core.Hit{hit(1, time.Second, "alpha"), hit(2, 2*time.Second, "beta"), hit(3, 3*time.Second, "alpine")}
+	tui, _ := start(t, &fakeSearch{hits: hits})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("s")
+	tui.Type("alp")
+	tui.Press("enter")
+	tui.Screen().Contains("filter: alp", "scene 1")
+	tui.Press("right")
+	tui.Screen().Contains("scene 3")
+	tui.Type("S")
+	tui.Screen().Lacks("filter: alp")
+	tui.Press("esc")
+	tui.Screen().Contains("search:")
+}
+
+func TestEscWhileTypingFilterStaysOnScene(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: []core.Hit{hit(1, time.Second, "one")}})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("s")
+	tui.Press("esc")
+	tui.Screen().Contains("scene 1")
+}

@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -46,6 +49,15 @@ func buildCmd(stages []stage) *cobra.Command {
 					return fmt.Errorf("--skip: unknown stage %q (stages: %s)", s, strings.Join(names, ", "))
 				}
 			}
+			ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
+			if isTerminal(stderr) {
+				p := newPipeline(stderr, ran(names, skip), barWidth(stderr))
+				defer p.finish()
+				ctx, stderr = withPipeline(ctx, p), p
+				if isTerminal(stdout) {
+					stdout = p
+				}
+			}
 			for _, s := range stages {
 				if slices.Contains(skip, s.name) {
 					continue
@@ -59,7 +71,7 @@ func buildCmd(stages []stage) *cobra.Command {
 						a = append(a, "--"+opt+"="+f.Value.String())
 					}
 				})
-				if err := execute(c.Context(), s.cmd(), a, c.OutOrStdout(), c.ErrOrStderr()); err != nil {
+				if err := execute(ctx, s.cmd(), a, stdout, stderr); err != nil {
 					return fmt.Errorf("%s: %w", s.name, err)
 				}
 			}
@@ -82,4 +94,19 @@ func buildCmd(stages []stage) *cobra.Command {
 		})
 	}
 	return cmd
+}
+
+// ran is the stage names that are not skipped.
+func ran(names, skip []string) []string {
+	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(skip, n) })
+}
+
+// barWidth is the terminal's width, within 40 to 100 cells.
+func barWidth(w io.Writer) int {
+	if f, ok := w.(*os.File); ok {
+		if cols, _, err := term.GetSize(f.Fd()); err == nil {
+			return min(max(cols-1, 40), 100)
+		}
+	}
+	return 60
 }

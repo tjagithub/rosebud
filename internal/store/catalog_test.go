@@ -342,3 +342,49 @@ func TestStore_SearchKeepsOriginalText(t *testing.T) {
 		t.Fatalf("hits = %+v, %v; want the original katakana back", hits, err)
 	}
 }
+
+// A rerun of the same detection must not wipe the text read since.
+func TestStore_ReplaceScenesKeepsTextOfUnchangedScenes(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "x"), line(2, "y"))
+	ids := sceneIDs(t, s, "a")
+	if err := s.SetText(ctx, "a", map[core.SceneID]string{ids[0]: "rosebud", ids[1]: "kane"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSubtitle(ctx, "a", map[core.SceneID]string{ids[0]: "ばら", ids[1]: "ケーン"}); err != nil {
+		t.Fatal(err)
+	}
+
+	again := line(1, "x")
+	again.Text = ""
+	moved := line(2, "y")
+	moved.Text = ""
+	moved.End += time.Second // boundary changed: the old text no longer fits
+	if err := s.ReplaceScenes(ctx, "a", []store.SceneText{again, moved}); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := s.Search(ctx, core.SearchQuery{Text: "rosebud", Limit: 10})
+	if err != nil || len(hits) != 1 || hits[0].Subtitle != "ばら" {
+		t.Errorf("unchanged scene lost its text: %+v, %v", hits, err)
+	}
+	if hitCount(t, s, "ばら") != 1 {
+		t.Error("kept subtitle is not searchable")
+	}
+	if hitCount(t, s, "kane") != 0 || hitCount(t, s, "ケーン") != 0 {
+		t.Error("a scene with a new boundary kept stale text")
+	}
+}
+
+func TestStore_ReplaceScenesPrefersNewText(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "old"))
+	if err := s.ReplaceScenes(ctx, "a", []store.SceneText{line(1, "new")}); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount(t, s, "old") != 0 || hitCount(t, s, "new") != 1 {
+		t.Error("supplied text should replace the old text")
+	}
+}

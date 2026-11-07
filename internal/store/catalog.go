@@ -49,6 +49,8 @@ func (s *Store) DeleteFilm(ctx context.Context, id core.FilmID) error {
 }
 
 // ReplaceScenes swaps all of a film's scenes for the given ones, atomically.
+// A scene with the same span as before and no text of its own keeps its old
+// text and subtitle, so a rescan does not wipe what was read since.
 func (s *Store) ReplaceScenes(ctx context.Context, film core.FilmID, scenes []SceneText) (err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -56,17 +58,25 @@ func (s *Store) ReplaceScenes(ctx context.Context, film core.FilmID, scenes []Sc
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	kept, err := keptText(ctx, tx, film)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `delete from scenes where film = ?`, film); err != nil {
 		return err
 	}
 	ins, err := tx.PrepareContext(ctx,
-		`insert into scenes(film, start_ns, end_ns, frame, text, norm) values (?, ?, ?, ?, ?, ?)`)
+		`insert into scenes(film, start_ns, end_ns, frame, text, subtitle, norm) values (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = ins.Close() }()
 	for _, sc := range scenes {
-		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, sc.Text, foldAll(sc.Text, "")); err != nil {
+		text, sub := sc.Text, ""
+		if old, ok := kept[span{sc.Start, sc.End}]; ok && text == "" {
+			text, sub = old.text, old.sub
+		}
+		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, text, sub, foldAll(text, sub)); err != nil {
 			return fmt.Errorf("store: scenes for film %q: %w", film, err)
 		}
 	}
@@ -224,4 +234,27 @@ func query[T any](ctx context.Context, db *sql.DB, scan func(*sql.Rows) (T, erro
 			yield(zero, err)
 		}
 	}
+}
+
+type span struct{ start, end time.Duration }
+
+type oldText struct{ text, sub string }
+
+// keptText reads the text of a film's scenes, keyed by their start and end.
+func keptText(ctx context.Context, tx *sql.Tx, film core.FilmID) (map[span]oldText, error) {
+	rows, err := tx.QueryContext(ctx, `select start_ns, end_ns, text, subtitle from scenes where film = ?`, film)
+	if err != nil {
+		return nil, fmt.Errorf("store: scenes of film %q: %w", film, err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[span]oldText{}
+	for rows.Next() {
+		var s, e int64
+		var o oldText
+		if err := rows.Scan(&s, &e, &o.text, &o.sub); err != nil {
+			return nil, fmt.Errorf("store: scenes of film %q: %w", film, err)
+		}
+		out[span{time.Duration(s), time.Duration(e)}] = o
+	}
+	return out, rows.Err()
 }

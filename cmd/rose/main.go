@@ -32,6 +32,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runSubs(ctx, args[1:], stdout, stderr, parakeet)
 	case "ocr":
 		return runOCR(ctx, args[1:], stdout, stderr, nil)
+	case "search":
+		return runSearch(ctx, args[1:], stdout, stderr)
 	case "translate":
 		return runTranslate(ctx, args[1:], stdout, stderr, nil)
 	case "cache":

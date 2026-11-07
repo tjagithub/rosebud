@@ -3,6 +3,8 @@
 package ui
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -129,7 +131,7 @@ func (m *Model) sendSize(s Screen) tea.Cmd {
 }
 
 func (m *Model) View() tea.View {
-	out := m.stack[len(m.stack)-1].View()
+	out := fitHeight(m.stack[len(m.stack)-1].View(), m.body().Height)
 	out += "\n"
 	if km, ok := m.top().(help.KeyMap); ok {
 		out += m.help.View(km)
@@ -180,4 +182,16 @@ func (m *Model) crumbs() []string {
 		}
 	}
 	return out
+}
+
+// fitHeight cuts or pads s to exactly h lines, so the bars below stay put.
+func fitHeight(s string, h int) string {
+	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	if len(lines) > h {
+		lines = lines[:h]
+	}
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
 }

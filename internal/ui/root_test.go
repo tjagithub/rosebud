@@ -117,3 +117,17 @@ func TestStatusBarShowsWhereYouAreAndHowDeep(t *testing.T) {
 	}
 	tui.Screen().Contains("level 3")
 }
+
+func TestBarsStayOnTheLastLinesWhateverTheScreenHolds(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{})
+	last := func() (string, int) {
+		lines := strings.Split(tui.Screen().String(), "\n")
+		return lines[len(lines)-1], len(lines)
+	}
+	bar, n := last()
+	tui.Send(ui.PushMsg{Screen: &titled{note: note{text: strings.Repeat("row\n", 100)}, title: "tall"}})
+	bar2, n2 := last()
+	if n != 24 || n2 != 24 || !strings.Contains(bar, "level 1") || !strings.Contains(bar2, "level 2") {
+		t.Errorf("height %d then %d; bars %q then %q", n, n2, bar, bar2)
+	}
+}

@@ -45,7 +45,7 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 		}
 	}
 	if len(ids) == 0 {
-		return fmt.Errorf("translate: film %q has no text; run subs or ocr first", spec.Film)
+		return core.Skip("film %q has no text; run subs or ocr first", spec.Film)
 	}
 	out, err := s.Translator.Translate(WithProgress(ctx, progress), lines)
 	if err != nil {

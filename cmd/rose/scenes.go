@@ -111,10 +111,6 @@ func scenesCmd() *cobra.Command {
 // runJob starts spec, prints progress, and returns the job once it ends.
 // If ctx is cancelled the job is cancelled and runJob waits for it to stop.
 func runJob(ctx context.Context, c core.Client, spec core.JobSpec, progress io.Writer) (core.JobInfo, error) {
-	if p := pipelineFrom(ctx); p != nil {
-		progress = io.Discard
-		defer p.set(spec.Stage, 1, 1)
-	}
 	rep := newReporter(progress, isTerminal(progress))
 	defer rep.finish()
 	evCtx, stopEvents := context.WithCancel(context.WithoutCancel(ctx))
@@ -141,11 +137,7 @@ func runJob(ctx context.Context, c core.Client, spec core.JobSpec, progress io.W
 			switch e := ev.(type) {
 			case core.JobProgress:
 				if e.Job == id {
-					if p := pipelineFrom(ctx); p != nil {
-						p.set(spec.Stage, e.Done, e.Total)
-					} else {
-						rep.report(spec.Stage, e.Done, e.Total)
-					}
+					rep.report(spec.Stage, e.Done, e.Total)
 				}
 			case core.JobChanged:
 				if e.Info.ID == id && ended(e.Info.State) {
@@ -177,9 +169,17 @@ func ended(s core.JobState) bool {
 func result(j core.JobInfo) (core.JobInfo, error) {
 	switch j.State {
 	case core.JobFailed:
+		if reason, ok := strings.CutPrefix(j.Err, core.SkipPrefix); ok {
+			return j, &skippedError{stage: j.Spec.Stage, reason: reason}
+		}
 		return j, fmt.Errorf("%s failed: %s", j.Spec.Stage, j.Err)
 	case core.JobCancelled:
 		return j, fmt.Errorf("%s cancelled", j.Spec.Stage)
 	}
 	return j, nil
 }
+
+// skippedError is a stage that had nothing to do; build carries on past it.
+type skippedError struct{ stage, reason string }
+
+func (e *skippedError) Error() string { return e.stage + ": " + e.reason }

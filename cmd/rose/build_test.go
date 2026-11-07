@@ -60,3 +60,20 @@ func TestBuildRejectsUnknownSkip(t *testing.T) {
 		t.Error("want an error for an unknown stage")
 	}
 }
+
+func TestBuildSkipsAStageWithNothingToDo(t *testing.T) {
+	var log []string
+	skipErr := &skippedError{stage: "ocr", reason: "no subtitle track"}
+	st := []stage{fakeStage("scenes", &log, nil), fakeStage("ocr", &log, skipErr), fakeStage("translate", &log, nil)}
+	var out bytes.Buffer
+	err := execute(context.Background(), buildCmd(st), []string{"film.mkv"}, &out, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 3 {
+		t.Errorf("a skipped stage must not stop the rest: %q", log)
+	}
+	if !strings.Contains(out.String(), "ocr: skipped: no subtitle track") {
+		t.Errorf("output = %q", out.String())
+	}
+}

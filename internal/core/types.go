@@ -1,7 +1,10 @@
 // Package core defines rosebud's domain types and ports. It has no I/O.
 package core
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type (
 	FilmID  string
@@ -70,4 +73,14 @@ type JobInfo struct {
 	Done  int64
 	Total int64
 	Err   string
+}
+
+// SkipPrefix starts the message of a stage that had nothing to do for this
+// film. It survives as text in JobInfo.Err, which is how callers spot it.
+const SkipPrefix = "skipped: "
+
+// Skip is the error of a stage with nothing to do, such as ocr on a film
+// without bitmap subtitles.
+func Skip(format string, args ...any) error {
+	return fmt.Errorf(SkipPrefix+format, args...)
 }

@@ -3,6 +3,7 @@ package lock_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +19,9 @@ func TestSecondAcquireFailsUntilReleased(t *testing.T) {
 	_, err = lock.Acquire(dir)
 	if err == nil || !strings.Contains(err.Error(), dir) {
 		t.Fatalf("second acquire: err = %v, want one naming %s", err, dir)
+	}
+	if !strings.Contains(err.Error(), "pid "+strconv.Itoa(os.Getpid())) {
+		t.Errorf("err = %v, want the holder's pid", err)
 	}
 	release()
 	release() // releasing twice is harmless
@@ -57,4 +61,17 @@ func TestStaleLockFileDoesNotBlock(t *testing.T) {
 		t.Fatalf("stale file blocked: %v", err)
 	}
 	release()
+}
+
+func TestHolderIsRecordedWhileHeld(t *testing.T) {
+	dir := t.TempDir()
+	release, err := lock.Acquire(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	data, err := os.ReadFile(filepath.Join(dir, ".rose.lock"))
+	if err != nil || len(data) == 0 {
+		t.Fatalf("holder info missing while held: %q %v", data, err)
+	}
 }

@@ -43,3 +43,33 @@ func TestDetailUploadsItsFrameInItsOwnSlot(t *testing.T) {
 	}
 	tui.Screen().Contains(string(rune(0x10EEEE)))
 }
+
+func TestDetailStepsBetweenHitsWithinBounds(t *testing.T) {
+	hits := []core.Hit{hit(1, time.Second, "first"), hit(2, 2*time.Second, "second"), hit(3, 3*time.Second, "third")}
+	tui, _ := start(t, &fakeSearch{hits: hits})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Press("left")
+	tui.Screen().Contains("scene 1", "1/3", "first")
+	tui.Press("right")
+	tui.Press("right")
+	tui.Press("right")
+	tui.Screen().Contains("scene 3", "3/3", "third")
+	tui.Screen().Lacks("first")
+}
+
+func TestSteppingLoadsTheNextFrame(t *testing.T) {
+	dir := bundleWithFrames(t, "a.jpg", "b.jpg")
+	f := &fakeSearch{hits: []core.Hit{
+		withFrame(hit(1, time.Second, "one"), "frames/a.jpg"),
+		withFrame(hit(2, 2*time.Second, "two"), "frames/b.jpg"),
+	}}
+	tui := uitest.New(t, ui.New(f, 10, ui.WithBundle(dir)))
+	tui.Type("x")
+	tui.Press("enter")
+	n := len(tui.Raw)
+	tui.Press("right")
+	if len(tui.Raw) != n+1 {
+		t.Errorf("stepping must upload the next frame, raw %d -> %d", n, len(tui.Raw))
+	}
+}

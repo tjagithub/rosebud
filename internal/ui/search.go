@@ -66,7 +66,7 @@ func (m *searchScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			if m.sel < len(m.hits) {
-				return m, Push(newDetail(m.hits[m.sel], m.fr.bundle))
+				return m, Push(newDetail(m.hits, m.sel, m.fr.bundle))
 			}
 			return m, nil
 		case "up":

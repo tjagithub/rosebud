@@ -16,45 +16,69 @@ const detailID = 8 // kitty image slot of the detail screen
 // detailScreen shows one scene: a large frame, its time, and the original
 // text beside its translation.
 type detailScreen struct {
-	hit  core.Hit
+	hits []core.Hit
+	i    int
 	fr   pane
 	w, h int
 }
 
-func newDetail(h core.Hit, bundle string) *detailScreen {
-	return &detailScreen{hit: h, fr: pane{id: detailID, cols: 60, bundle: bundle}}
+func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
+	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, cols: 60, bundle: bundle}}
 }
+
+// hit is the scene on show.
+func (d *detailScreen) hit() core.Hit { return d.hits[d.i] }
 
 func (d *detailScreen) Init() tea.Cmd { return nil }
 
-func (d *detailScreen) Title() string { return fmt.Sprintf("scene %d", d.hit.Scene.ID) }
+func (d *detailScreen) Title() string { return fmt.Sprintf("scene %d", d.hit().Scene.ID) }
 
-var backKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
+var (
+	backKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
+	stepKey = key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "previous/next"))
+)
 
-func (d *detailScreen) ShortHelp() []key.Binding  { return []key.Binding{backKey} }
-func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{{backKey}} }
+func (d *detailScreen) ShortHelp() []key.Binding  { return []key.Binding{stepKey, backKey} }
+func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
 func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		d.w, d.h = msg.Width, msg.Height
 		d.fr.cols = min(max(msg.Width-4, 20), 72)
-		return d, d.fr.load(d.hit.Scene.Frame)
+		return d, d.fr.load(d.hit().Scene.Frame)
 	case FrameMsg:
 		return d, d.fr.onFrame(msg)
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "left":
+			return d, d.step(-1)
+		case "right":
+			return d, d.step(1)
+		}
 	}
 	return d, nil
 }
 
 func (d *detailScreen) View() string {
-	s := d.hit.Scene
+	s := d.hit().Scene
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s – %s  %s\n\n", Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
+	fmt.Fprintf(&b, "%d/%d  %s – %s  %s\n\n", d.i+1, len(d.hits), Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
 	if d.fr.shown != "" {
 		b.WriteString(d.fr.view() + "\n")
 	}
-	b.WriteString(columns(max(d.w, 20), original(d.hit), d.hit.Translation))
+	b.WriteString(columns(max(d.w, 20), original(d.hit()), d.hit().Translation))
 	return b.String()
 }
 
 var _ help.KeyMap = (*detailScreen)(nil)
+
+// step moves to the neighbouring hit, if there is one, and loads its frame.
+func (d *detailScreen) step(by int) tea.Cmd {
+	n := d.i + by
+	if n < 0 || n >= len(d.hits) {
+		return nil
+	}
+	d.i = n
+	return d.fr.load(d.hit().Scene.Frame)
+}

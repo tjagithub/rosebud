@@ -1,183 +1,123 @@
-// Package ui is the terminal interface: a search box, the matching scenes and
-// the text of the chosen one.
+// Package ui is the terminal interface: a stack of screens, with overlays
+// above them. The first screen is the search; see screen.go for the rest.
 package ui
 
 import (
-	"context"
-	"fmt"
-	"strings"
-	"time"
-
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/tjagithub/rosebud/internal/core"
 )
 
-// Searcher is the part of core.Client the screen needs.
-type Searcher interface {
-	Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, error)
-}
-
-// ResultMsg carries the hits of the search numbered Seq.
-type ResultMsg struct {
-	Seq  int
-	Hits []core.Hit
-	Err  error
-}
-
-// Model is the Bubble Tea model. Searches run as commands, so Update never blocks.
+// Model is the Bubble Tea root. It owns navigation and the window size and
+// leaves everything else to its screens.
 type Model struct {
-	src           Searcher
-	limit         int
-	input         textinput.Model
-	width, height int
-	seq           int // the newest search; older results are dropped
-	hits          []core.Hit
-	sel           int
-	err           error
-	bundle        string
-	want, shown   string // frame path being loaded, and the one on screen
-	rows          int
+	stack, overlays []Screen
+	size            tea.WindowSizeMsg
 }
 
-// New returns a screen that shows up to limit hits per search.
+// New returns the interface, opening on the search screen that shows up to
+// limit hits per search.
 func New(src Searcher, limit int, opts ...Option) *Model {
-	in := textinput.New()
-	in.Prompt = "search: "
-	in.Focus()
-	m := &Model{src: src, limit: limit, input: in}
+	var cfg config
 	for _, o := range opts {
-		o(m)
+		o(&cfg)
 	}
-	return m
+	return &Model{stack: []Screen{newSearch(src, limit, cfg)}}
 }
 
-// Selected is the index of the highlighted hit.
-func (m *Model) Selected() int { return m.sel }
+// Selected is the index of the highlighted hit on the search screen.
+func (m *Model) Selected() int { return m.stack[0].(*searchScreen).sel }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return m.stack[0].Init() }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-		m.input.SetWidth(max(msg.Width-10, 10))
-	case ResultMsg:
-		if msg.Seq != m.seq {
-			return m, nil
-		}
-		m.hits, m.err, m.sel = msg.Hits, msg.Err, 0
-		return m, m.frame()
-	case FrameMsg:
-		return m, m.onFrame(msg)
+		m.size = msg
+		return m, m.broadcast(msg)
+	case PushMsg:
+		m.stack = append(m.stack, msg.Screen)
+		return m, tea.Batch(msg.Screen.Init(), m.sendSize(msg.Screen))
+	case OpenMsg:
+		m.overlays = append(m.overlays, msg.Overlay)
+		return m, tea.Batch(msg.Overlay.Init(), m.sendSize(msg.Overlay))
+	case PopMsg:
+		m.pop()
+		return m, nil
+	case CloseMsg:
+		m.closeOverlay()
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "esc", "ctrl+c":
+		case "ctrl+c":
 			return m, tea.Quit
-		case "up":
-			m.sel = max(m.sel-1, 0)
-			return m, m.frame()
-		case "down":
-			m.sel = max(min(m.sel+1, len(m.hits)-1), 0)
-			return m, m.frame()
+		case "esc":
+			switch {
+			case len(m.overlays) > 0:
+				m.closeOverlay()
+			case len(m.stack) > 1:
+				m.pop()
+			default:
+				return m, tea.Quit
+			}
+			return m, nil
 		}
-		before := m.input.Value()
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		if m.input.Value() != before {
-			return m, m.search()
-		}
-		return m, cmd
+		return m, m.updateTop(msg)
 	}
-	return m, nil
+	return m, m.broadcast(msg)
 }
 
-// search starts a search for the current text.
-func (m *Model) search() tea.Cmd {
-	m.seq++
-	seq, text := m.seq, strings.TrimSpace(m.input.Value())
-	if text == "" {
-		m.hits, m.err, m.sel = nil, nil, 0
-		m.shown, m.want = "", ""
+func (m *Model) pop() {
+	if len(m.stack) > 1 {
+		m.stack = m.stack[:len(m.stack)-1]
+	}
+}
+
+func (m *Model) closeOverlay() {
+	if n := len(m.overlays); n > 0 {
+		m.overlays = m.overlays[:n-1]
+	}
+}
+
+// updateTop gives msg to the overlay on top, or else to the top screen.
+func (m *Model) updateTop(msg tea.Msg) tea.Cmd {
+	list := m.stack
+	if len(m.overlays) > 0 {
+		list = m.overlays
+	}
+	var cmd tea.Cmd
+	list[len(list)-1], cmd = list[len(list)-1].Update(msg)
+	return cmd
+}
+
+// broadcast gives msg to every screen and overlay. Results of work a screen
+// started may arrive while another is on top; each screen ignores what is not its own.
+func (m *Model) broadcast(msg tea.Msg) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, list := range [][]Screen{m.stack, m.overlays} {
+		for i, s := range list {
+			var c tea.Cmd
+			list[i], c = s.Update(msg)
+			cmds = append(cmds, c)
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+// sendSize tells a newly opened screen how big the window is.
+func (m *Model) sendSize(s Screen) tea.Cmd {
+	if m.size.Width == 0 {
 		return nil
 	}
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		hits, err := m.src.Search(ctx, core.SearchQuery{Text: text, Limit: m.limit})
-		return ResultMsg{Seq: seq, Hits: hits, Err: err}
-	}
+	_, c := s.Update(m.size)
+	return c
 }
-
-var (
-	dim      = lipgloss.NewStyle().Faint(true)
-	selected = lipgloss.NewStyle().Bold(true).Reverse(true)
-)
 
 func (m *Model) View() tea.View {
-	var b strings.Builder
-	b.WriteString(m.input.View() + "\n\n")
-	if m.err != nil {
-		b.WriteString("error: " + m.err.Error() + "\n")
+	out := m.stack[len(m.stack)-1].View()
+	if n := len(m.overlays); n > 0 {
+		out = lipgloss.Place(m.size.Width, m.size.Height, lipgloss.Center, lipgloss.Center, m.overlays[n-1].View())
 	}
-	w := max(m.width, 20)
-	for i, h := range m.hits {
-		line := fmt.Sprintf("%7s  %s", Clock(h.Scene.Start), oneLine(h))
-		line = lipgloss.NewStyle().MaxWidth(w).Render(line)
-		if i == m.sel {
-			line = selected.Render(line)
-		}
-		b.WriteString(line + "\n")
-	}
-	if m.sel < len(m.hits) {
-		h := m.hits[m.sel]
-		b.WriteString("\n" + dim.Render(strings.Repeat("─", w)) + "\n")
-		if m.shown != "" {
-			b.WriteString(m.framePane())
-		}
-		b.WriteString(columns(w, original(h), h.Translation) + "\n")
-	}
-	v := tea.NewView(b.String())
+	v := tea.NewView(out)
 	v.AltScreen = true
 	return v
-}
-
-// oneLine is the first of a hit's translation, subtitle and text that has any.
-func oneLine(h core.Hit) string {
-	for _, p := range []string{h.Translation, h.Subtitle, h.Text} {
-		if p = strings.Join(strings.Fields(p), " "); p != "" {
-			return p
-		}
-	}
-	return ""
-}
-
-// Clock formats d as M:SS, or H:MM:SS from an hour on.
-func Clock(d time.Duration) string {
-	s := int(d.Seconds())
-	if s >= 3600 {
-		return fmt.Sprintf("%d:%02d:%02d", s/3600, s%3600/60, s%60)
-	}
-	return fmt.Sprintf("%d:%02d", s/60, s%60)
-}
-
-// original is the on-screen subtitle and the spoken text of a hit, if any.
-func original(h core.Hit) string {
-	var parts []string
-	for _, p := range []string{h.Subtitle, h.Text} {
-		if p = strings.TrimSpace(p); p != "" {
-			parts = append(parts, p)
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-// columns lays left and right side by side in a width of w cells.
-func columns(w int, left, right string) string {
-	half := max((w-3)/2, 8)
-	l := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(left))
-	r := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(right))
-	return lipgloss.JoinHorizontal(lipgloss.Top, l, dim.Render(" │ "), r)
 }

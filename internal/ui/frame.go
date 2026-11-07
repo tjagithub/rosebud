@@ -29,15 +29,17 @@ type FrameMsg struct {
 	Rows int
 }
 
-// Option configures a Model.
-type Option func(*Model)
+// Option configures the interface.
+type Option func(*config)
+
+type config struct{ bundle string }
 
 // WithBundle shows each scene's frame from this bundle directory, in
 // terminals that support kitty's unicode placeholders.
-func WithBundle(dir string) Option { return func(m *Model) { m.bundle = dir } }
+func WithBundle(dir string) Option { return func(c *config) { c.bundle = dir } }
 
 // frame starts loading the selected hit's frame, if there is one to show.
-func (m *Model) frame() tea.Cmd {
+func (m *searchScreen) frame() tea.Cmd {
 	m.shown = ""
 	if m.bundle == "" || m.sel >= len(m.hits) || m.hits[m.sel].Scene.Frame == "" {
 		return nil
@@ -51,7 +53,7 @@ func (m *Model) frame() tea.Cmd {
 }
 
 // onFrame sends a loaded frame to the terminal if it is still the selected one.
-func (m *Model) onFrame(msg FrameMsg) tea.Cmd {
+func (m *searchScreen) onFrame(msg FrameMsg) tea.Cmd {
 	if msg.Path != m.want || msg.Data == "" {
 		return nil
 	}
@@ -121,7 +123,7 @@ func shrink(img image.Image, max int) image.Image {
 }
 
 // framePane is the placeholder cells that the terminal paints the frame into.
-func (m *Model) framePane() string {
+func (m *searchScreen) framePane() string {
 	var sb strings.Builder
 	for r := range m.rows {
 		fmt.Fprintf(&sb, "\x1b[38;5;%dm", frameID)

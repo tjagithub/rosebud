@@ -21,11 +21,12 @@ type detailScreen struct {
 	i    int
 	fr   pane
 	f    filter
+	th   strip
 	w, h int
 }
 
 func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
-	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}, f: newFilter()}
+	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}, f: newFilter(), th: newStrip(bundle)}
 }
 
 // hit is the scene on show.
@@ -52,9 +53,10 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		d.w, d.h = msg.Width, msg.Height
 		d.fr.box = size{cols: max(d.w-4, 8), rows: max(d.h-detailChrome, 1)}
-		return d, d.fr.load(d.hit().Scene.Frame)
+		d.th.resize(d.w)
+		return d, d.reload()
 	case FrameMsg:
-		return d, d.fr.onFrame(msg)
+		return d, tea.Batch(d.fr.onFrame(msg), d.th.onFrame(msg))
 	case tea.KeyPressMsg:
 		if d.f.editing {
 			changed, cmd := d.f.update(msg)
@@ -113,11 +115,11 @@ func (d *detailScreen) settle() tea.Cmd {
 	for p := len(idx) - 1; p >= 0 && idx[p] >= cur; p-- {
 		d.i = idx[p]
 	}
-	return d.fr.load(d.hit().Scene.Frame)
+	return d.reload()
 }
 
 // detailChrome is the lines the strip, the two spare lines and the text take.
-const detailChrome = 3 + 2 + dialogueRows + 2
+const detailChrome = stripRows + 2 + dialogueRows + 2
 
 const dialogueRows = 4
 
@@ -140,7 +142,7 @@ func (d *detailScreen) View() string {
 	}
 	text := box.Height(dialogueRows + 2).MaxHeight(dialogueRows + 2).Render(
 		columns(w-2, list, info+"\n"+d.hit().Translation))
-	return strings.Join([]string{d.strip(w), img, text}, "\n")
+	return strings.Join([]string{d.th.view(w, d.pos(), len(d.visible())), img, text}, "\n")
 }
 
 // image is the frame's placeholder cells, or nothing while it loads.
@@ -151,26 +153,19 @@ func (d *detailScreen) image() string {
 	return strings.TrimSuffix(d.fr.view(), "\n")
 }
 
-// strip is a boxed row of scene numbers around the current one, with arrows
-// where there are more to the sides.
-func (d *detailScreen) strip(w int) string {
-	var parts []string
-	for i := max(d.i-2, 0); i <= min(d.i+2, len(d.hits)-1); i++ {
-		label := fmt.Sprintf("%d", d.hits[i].Scene.ID)
+// pos is the place of the current scene among the visible ones.
+func (d *detailScreen) pos() int {
+	for p, i := range d.visible() {
 		if i == d.i {
-			label = selected.Render(" " + label + " ")
+			return p
 		}
-		parts = append(parts, label)
 	}
-	left, right := " ", " "
-	if d.i > 0 {
-		left = "<"
-	}
-	if d.i < len(d.hits)-1 {
-		right = ">"
-	}
-	inner := lipgloss.PlaceHorizontal(max(w-4, 1), lipgloss.Center, strings.Join(parts, "  "))
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(w).Render(left + inner + right)
+	return 0
+}
+
+// reload loads the big frame and the thumbnails around it.
+func (d *detailScreen) reload() tea.Cmd {
+	return tea.Batch(d.fr.load(d.hit().Scene.Frame), d.th.load(d.hits, d.visible(), d.pos()))
 }
 
 var _ help.KeyMap = (*detailScreen)(nil)
@@ -184,7 +179,7 @@ func (d *detailScreen) step(by int) tea.Cmd {
 				return nil
 			}
 			d.i = idx[p+by]
-			return d.fr.load(d.hit().Scene.Frame)
+			return d.reload()
 		}
 	}
 	return nil

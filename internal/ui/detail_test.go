@@ -35,11 +35,13 @@ func TestDetailUploadsItsFrameInItsOwnSlot(t *testing.T) {
 	tui.Type("x")
 	before := len(tui.Raw)
 	tui.Press("enter")
-	if len(tui.Raw) != before+1 {
-		t.Fatalf("detail must upload its own frame, raw %d -> %d", before, len(tui.Raw))
+	var slots []string
+	for _, r := range tui.Raw[before:] {
+		slots = append(slots, r[:min(len(r), 40)])
 	}
-	if !strings.Contains(tui.Raw[before], "i=8") {
-		t.Errorf("detail frame must use slot 8: %q", tui.Raw[before])
+	all := strings.Join(tui.Raw[before:], "")
+	if !strings.Contains(all, "i=8") || !strings.Contains(all, "i=22") {
+		t.Errorf("detail must upload its frame in slot 8 and its thumbnail in slot 22: %q", slots)
 	}
 	tui.Screen().Contains(string(rune(0x10EEEE)))
 }
@@ -69,7 +71,7 @@ func TestSteppingLoadsTheNextFrame(t *testing.T) {
 	tui.Press("enter")
 	n := len(tui.Raw)
 	tui.Press("right")
-	if len(tui.Raw) != n+1 {
+	if !strings.Contains(strings.Join(tui.Raw[n:], ""), "i=8") {
 		t.Errorf("stepping must upload the next frame, raw %d -> %d", n, len(tui.Raw))
 	}
 }
@@ -84,8 +86,8 @@ func TestDetailFillsTheBodyAndSizesImageToIt(t *testing.T) {
 	if len(lines) != 24 {
 		t.Fatalf("screen is %d lines, want 24", len(lines))
 	}
-	if !strings.HasPrefix(lines[0], "╭") || !strings.Contains(lines[1], "1") {
-		t.Errorf("scene strip should open the screen: %q", lines[:3])
+	if !strings.HasPrefix(lines[0], "╭") || !strings.HasPrefix(lines[4], "╰") {
+		t.Errorf("a boxed thumbnail strip should open the screen: %q", lines[:5])
 	}
 	n := strings.Count(tui.Screen().String(), string(rune(0x10EEEE)))
 	if n < 40 {

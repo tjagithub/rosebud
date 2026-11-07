@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"image"
@@ -47,10 +48,10 @@ type size struct{ cols, rows int }
 
 // pane shows one frame image in a fixed slot of the terminal.
 type pane struct {
-	id   int
-	box  size // the most cells a frame may take
-	cols int  // size of the frame on show
-
+	id          int
+	box         size // the most cells a frame may take
+	cols        int  // size of the frame on show
+	maxPx       int  // pixels wide to send; 0 for maxPixels
 	bundle      string
 	want, shown string // frame path being loaded, and the one on screen
 	rows        int
@@ -64,9 +65,9 @@ func (p *pane) load(rel string) tea.Cmd {
 		return nil
 	}
 	p.want = rel
-	id, box, dir := p.id, p.box, p.bundle
+	id, box, dir, px := p.id, p.box, p.bundle, p.maxPx
 	return func() tea.Msg {
-		data, cols, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)), id, box)
+		data, cols, rows := loadFrame(context.Background(), filepath.Join(dir, filepath.FromSlash(rel)), id, box, px)
 		return FrameMsg{ID: id, Path: rel, Data: data, Cols: cols, Rows: rows}
 	}
 }
@@ -90,7 +91,7 @@ func (m *searchScreen) frame() tea.Cmd {
 
 // loadFrame decodes a jpeg, shrinks it, and returns the kitty upload for a
 // virtual placement plus the rows it covers. Any failure returns "".
-func loadFrame(ctx context.Context, path string, id int, box size) (string, int, int) {
+func loadFrame(ctx context.Context, path string, id int, box size, px int) (string, int, int) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	type result struct {
@@ -110,7 +111,7 @@ func loadFrame(ctx context.Context, path string, id int, box size) (string, int,
 			done <- result{}
 			return
 		}
-		img = shrink(img, maxPixels)
+		img = shrink(img, cmp.Or(px, maxPixels))
 		b := img.Bounds()
 		cols, rows := fit(b.Dx(), b.Dy(), box)
 		var buf bytes.Buffer

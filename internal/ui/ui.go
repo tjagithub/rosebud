@@ -130,9 +130,11 @@ func (m *Model) sendSize(s Screen) tea.Cmd {
 
 func (m *Model) View() tea.View {
 	out := m.stack[len(m.stack)-1].View()
+	out += "\n"
 	if km, ok := m.top().(help.KeyMap); ok {
-		out += "\n" + m.help.View(km)
+		out += m.help.View(km)
 	}
+	out += "\n" + statusBar(m.size.Width, m.crumbs(), depthLabel(len(m.stack)+len(m.overlays)))
 	for _, o := range m.overlays {
 		out = over(out, o.View())
 	}
@@ -162,7 +164,20 @@ func (m *Model) top() Screen {
 	return m.stack[len(m.stack)-1]
 }
 
-// body is the window size left for a screen once the help line is taken.
+// body is the window size left for a screen once the help line and status bar are taken.
 func (m *Model) body() tea.WindowSizeMsg {
-	return tea.WindowSizeMsg{Width: m.size.Width, Height: max(m.size.Height-1, 1)}
+	return tea.WindowSizeMsg{Width: m.size.Width, Height: max(m.size.Height-2, 1)}
+}
+
+// crumbs are the titles of the screens and overlays, shallowest first.
+func (m *Model) crumbs() []string {
+	var out []string
+	for _, list := range [][]Screen{m.stack, m.overlays} {
+		for _, s := range list {
+			if t, ok := s.(Titler); ok {
+				out = append(out, t.Title())
+			}
+		}
+	}
+	return out
 }

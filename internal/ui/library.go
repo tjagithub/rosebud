@@ -110,7 +110,7 @@ func (l *libraryScreen) count(id core.FilmID) tea.Cmd {
 func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		l.list.SetSize(msg.Width, max(msg.Height-2, 1))
+		l.list.SetSize(msg.Width, max(msg.Height, 1))
 		return l, nil
 	case filmsMsg:
 		l.err = msg.Err
@@ -140,7 +140,7 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 func (l *libraryScreen) View() string {
-	out := dim.Render("films") + "\n\n"
+	out := ""
 	switch {
 	case l.err != nil:
 		out += "error: " + l.err.Error()
@@ -182,3 +182,5 @@ func scenesLabel(f filmItem) string {
 }
 
 var _ help.KeyMap = (*libraryScreen)(nil)
+
+func (l *libraryScreen) Title() string { return "films" }

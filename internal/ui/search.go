@@ -168,3 +168,5 @@ func columns(w int, left, right string) string {
 	r := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(right))
 	return lipgloss.JoinHorizontal(lipgloss.Top, l, dim.Render(" │ "), r)
 }
+
+func (m *searchScreen) Title() string { return "search" }

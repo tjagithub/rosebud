@@ -97,3 +97,23 @@ func TestOverlayIsDrawnOverTheScreenNotInsteadOfIt(t *testing.T) {
 	tui.Send(ui.OpenMsg{Overlay: &note{text: "POPUP"}})
 	tui.Screen().Contains("POPUP", "LEFT-EDGE", "RIGHT-EDGE")
 }
+
+type titled struct {
+	note
+	title string
+}
+
+func (t *titled) Title() string { return t.title }
+
+func TestStatusBarShowsWhereYouAreAndHowDeep(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{})
+	tui.Screen().Contains("search", "level 1")
+	tui.Send(ui.PushMsg{Screen: &titled{title: "Sonatine"}})
+	tui.Send(ui.OpenMsg{Overlay: &titled{title: "scene 12"}})
+	s := tui.Screen().String()
+	i, j, k := strings.Index(s, "search"), strings.Index(s, "Sonatine"), strings.Index(s, "scene 12")
+	if i < 0 || j < i || k < j {
+		t.Errorf("breadcrumb out of order or missing:\n%s", s)
+	}
+	tui.Screen().Contains("level 3")
+}

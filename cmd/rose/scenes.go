@@ -110,6 +110,8 @@ func scenesCmd() *cobra.Command {
 // runJob starts spec, prints progress, and returns the job once it ends.
 // If ctx is cancelled the job is cancelled and runJob waits for it to stop.
 func runJob(ctx context.Context, c core.Client, spec core.JobSpec, progress io.Writer) (core.JobInfo, error) {
+	rep := newReporter(progress, isTerminal(progress))
+	defer rep.finish()
 	evCtx, stopEvents := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopEvents()
 	events, err := c.Subscribe(evCtx)
@@ -134,7 +136,7 @@ func runJob(ctx context.Context, c core.Client, spec core.JobSpec, progress io.W
 			switch e := ev.(type) {
 			case core.JobProgress:
 				if e.Job == id {
-					_, _ = fmt.Fprintf(progress, "%s: %d/%d\n", spec.Stage, e.Done, e.Total)
+					rep.report(spec.Stage, e.Done, e.Total)
 				}
 			case core.JobChanged:
 				if e.Info.ID == id && ended(e.Info.State) {

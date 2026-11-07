@@ -38,6 +38,7 @@ func (c Cached) Read(ctx context.Context, pages []image.Image) ([][]Block, error
 		}
 		miss = append(miss, i)
 	}
+	reportProgress(ctx, len(pages)-len(miss), len(pages))
 	for len(miss) > 0 {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -61,6 +62,7 @@ func (c Cached) Read(ctx context.Context, pages []image.Image) ([][]Block, error
 				_ = c.Dir.Put(keys[i], b)
 			}
 		}
+		reportProgress(ctx, len(pages)-len(miss), len(pages))
 	}
 	return out, nil
 }

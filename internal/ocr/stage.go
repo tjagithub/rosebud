@@ -68,7 +68,7 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 		return fmt.Errorf("ocr: %s has %d subtitle events but %d rendered frames", file, len(valid), len(frames))
 	}
 	progress(0, int64(PageCount(len(frames))))
-	texts, more, err := ReadEvents(ctx, s.Reader, frames)
+	texts, more, err := ReadEvents(WithProgress(ctx, progress), s.Reader, frames)
 	if err != nil {
 		return err
 	}

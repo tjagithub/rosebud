@@ -34,7 +34,7 @@ func ReadEvents(ctx context.Context, rd Reader, frames []image.Image) ([]string,
 		for k, i := range miss {
 			sub[k] = frames[i]
 		}
-		retry, err := readFrames(ctx, rd, sub)
+		retry, err := readFrames(withoutProgress(ctx), rd, sub)
 		if err != nil {
 			return nil, nil, err
 		}

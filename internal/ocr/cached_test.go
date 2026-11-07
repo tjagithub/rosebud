@@ -148,3 +148,38 @@ func TestCachedRejectsBadSetup(t *testing.T) {
 		}
 	}
 }
+
+func TestCachedReportsProgressCountingHits(t *testing.T) {
+	c := newCached(t, &echo{}, "m1", 1)
+	if _, err := c.Read(t.Context(), []image.Image{pageWith(0)}); err != nil {
+		t.Fatal(err)
+	}
+	var seen [][2]int64
+	ctx := ocr.WithProgress(t.Context(), func(done, total int64) { seen = append(seen, [2]int64{done, total}) })
+	if _, err := c.Read(ctx, []image.Image{pageWith(0), pageWith(1), pageWith(2)}); err != nil {
+		t.Fatal(err)
+	}
+	want := [][2]int64{{1, 3}, {2, 3}, {3, 3}}
+	if !slices.Equal(seen, want) {
+		t.Errorf("progress = %v, want %v", seen, want)
+	}
+}
+
+func TestRetryReadDoesNotReportProgress(t *testing.T) {
+	var calls int
+	ctx := ocr.WithProgress(t.Context(), func(int64, int64) { calls++ })
+	c := newCached(t, &echo{}, "m1", 1)
+	rd := readerFunc(func(ctx context.Context, p []image.Image) ([][]ocr.Block, error) {
+		got, err := c.Read(ctx, p)
+		if len(got) > 0 {
+			got[0] = nil // first frame always reads empty
+		}
+		return got, err
+	})
+	if _, _, err := ocr.ReadEvents(ctx, rd, frames(2)); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 { // one initial report and one batch, none for the retry
+		t.Errorf("progress calls = %d, want 2", calls)
+	}
+}

@@ -39,9 +39,6 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	if fs.NArg() != 1 {
 		return errors.New("usage: rose ocr [flags] FILE")
 	}
-	if *lang == "" || *timeout <= 0 {
-		return errors.New("ocr: --lang must be set and --timeout must be positive")
-	}
 	file, err := filepath.Abs(fs.Arg(0))
 	if err != nil {
 		return err
@@ -53,6 +50,24 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	bundle := *bundleDir
 	if bundle == "" {
 		bundle = filepath.Join(filepath.Dir(file), stem+".film")
+	}
+	cfg, err := loadConfig(ctx, bundle, os.Environ())
+	if err != nil {
+		return err
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if !set["lang"] {
+		*lang = cfg.Get("OCR_LANG")
+	}
+	if !set["model"] {
+		*model = cfg.Get("OCR_MODEL")
+	}
+	if !set["timeout"] {
+		*timeout = cfg.Duration("OCR_TIMEOUT")
+	}
+	if *lang == "" || *timeout <= 0 {
+		return errors.New("ocr: language must be set and timeout must be positive")
 	}
 	dbPath := filepath.Join(bundle, "rose.db")
 	if err := statWithin(dbPath, 15*time.Second, os.Stat); err != nil {

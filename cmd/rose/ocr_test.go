@@ -57,3 +57,25 @@ func TestStatWithinGivesUpOnAStall(t *testing.T) {
 		t.Error("waited far longer than the limit")
 	}
 }
+
+func TestLoadConfigLayers(t *testing.T) {
+	bundle := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bundle, "rose.conf"), []byte("OCR_MODEL=film/model\nOCR_LANG=en\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	c, err := loadConfig(t.Context(), bundle, []string{"ROSE_OCR_LANG=fr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Get("OCR_MODEL") != "film/model" || c.Get("OCR_LANG") != "fr" || c.Duration("OCR_TIMEOUT") != 30*time.Minute {
+		t.Errorf("model %q lang %q timeout %v", c.Get("OCR_MODEL"), c.Get("OCR_LANG"), c.Duration("OCR_TIMEOUT"))
+	}
+	if err := os.WriteFile(filepath.Join(bundle, "rose.conf"), []byte("OCR_MODLE=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConfig(t.Context(), bundle, nil); err == nil {
+		t.Error("typo in a key: no error")
+	}
+}

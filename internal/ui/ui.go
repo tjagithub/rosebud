@@ -21,11 +21,21 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	return &Model{stack: []Screen{newSearch(src, limit, cfg)}}
+	if cfg.lib == nil {
+		return &Model{stack: []Screen{newSearch(src, limit, cfg)}}
+	}
+	return &Model{stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)))}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.
-func (m *Model) Selected() int { return m.stack[0].(*searchScreen).sel }
+func (m *Model) Selected() int {
+	for _, s := range m.stack {
+		if s, ok := s.(*searchScreen); ok {
+			return s.sel
+		}
+	}
+	return 0
+}
 
 func (m *Model) Init() tea.Cmd { return m.stack[0].Init() }
 
@@ -131,3 +141,6 @@ func over(base, top string) string {
 		lipgloss.NewLayer(top).X(x).Y(y).Z(1),
 	).Render()
 }
+
+// searchOnce keeps one search screen, so coming back to it finds the query as left.
+func searchOnce(s *searchScreen) func() Screen { return func() Screen { return s } }

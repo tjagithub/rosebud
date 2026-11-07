@@ -21,6 +21,9 @@ func New(t *testing.T, m tea.Model) *TUI {
 	t.Helper()
 	u := &TUI{t: t, m: m}
 	u.Send(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if cmd := m.Init(); cmd != nil {
+		u.run([]tea.Msg{cmd()})
+	}
 	return u
 }
 
@@ -60,31 +63,32 @@ func (u *TUI) Click(x, y int) {
 // expanded, a quit ends the run, and a command that blocks is the model's bug.
 func (u *TUI) Send(msg tea.Msg) {
 	u.t.Helper()
-	queue := []tea.Msg{msg}
+	u.run([]tea.Msg{msg})
+}
+
+// run delivers the queue and everything the model's commands send back.
+func (u *TUI) run(queue []tea.Msg) {
 	for len(queue) > 0 {
-		if r, ok := queue[0].(tea.RawMsg); ok {
-			u.Raw = append(u.Raw, fmt.Sprint(r.Msg))
-			queue = queue[1:]
+		next := queue[0]
+		queue = queue[1:]
+		switch m := next.(type) {
+		case nil, tea.QuitMsg:
+			continue
+		case tea.RawMsg:
+			u.Raw = append(u.Raw, fmt.Sprint(m.Msg))
+			continue
+		case tea.BatchMsg:
+			for _, c := range m {
+				if c != nil {
+					queue = append(queue, c())
+				}
+			}
 			continue
 		}
 		var cmd tea.Cmd
-		u.m, cmd = u.m.Update(queue[0])
-		queue = queue[1:]
-		if cmd == nil {
-			continue
-		}
-		switch out := cmd().(type) {
-		case nil, tea.QuitMsg:
-		case tea.BatchMsg:
-			for _, c := range out {
-				if c != nil {
-					if m := c(); m != nil {
-						queue = append(queue, m)
-					}
-				}
-			}
-		default:
-			queue = append(queue, out)
+		u.m, cmd = u.m.Update(next)
+		if cmd != nil {
+			queue = append(queue, cmd())
 		}
 	}
 }

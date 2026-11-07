@@ -32,7 +32,10 @@ type FrameMsg struct {
 // Option configures the interface.
 type Option func(*config)
 
-type config struct{ bundle string }
+type config struct {
+	bundle string
+	lib    Library
+}
 
 // WithBundle shows each scene's frame from this bundle directory, in
 // terminals that support kitty's unicode placeholders.

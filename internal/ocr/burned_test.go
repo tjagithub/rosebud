@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,5 +111,48 @@ func TestBurnedEventsIgnoresBrightPictures(t *testing.T) {
 	ev, _ := ocr.BurnedEvents([]ocr.Sample{{At: 0, Img: textImg(whole, 255)}}, step, 50)
 	if len(ev) != 0 {
 		t.Errorf("a mostly lit band is not text: %v", ev)
+	}
+}
+
+func TestParseMask(t *testing.T) {
+	m, err := ocr.ParseMask("iw*0.3,ih/10,0,20")
+	if err != nil || m.Filter() != "drawbox=x=0:y=20:w=iw*0.3:h=ih/10:color=black:t=fill" {
+		t.Errorf("got %q, %v", m.Filter(), err)
+	}
+	for _, bad := range []string{"", "1,2,3", "1,2,3,4,5", "1,2,3,x;y", "1,2,3,'a'", "1,,3,4"} {
+		if _, err := ocr.ParseMask(bad); err == nil {
+			t.Errorf("ParseMask(%q) must fail", bad)
+		}
+	}
+}
+
+func TestBurnedStageAppliesMasksAndRange(t *testing.T) {
+	var args []string
+	blank := pngBytes(t, textImg(image.Rectangle{}, 0))
+	line := pngBytes(t, textImg(image.Rect(10, 10, 100, 20), 255))
+	ex := func(_ context.Context, _ string, a ...string) ([]byte, error) {
+		args = a
+		return append(append([]byte{}, blank...), line...), nil
+	}
+	m, _ := ocr.ParseMask("100,50,0,0")
+	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(100)}}}
+	rd := &bandReader{texts: [][]string{{"hi"}}}
+	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: 1, Timeout: time.Minute, MinInk: 20,
+		Masks: []ocr.Mask{m}, From: sec(30), To: sec(60)}
+	if err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv"}), noProgress); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-ss 30.000", "-to 60.000", "drawbox=x=0:y=0:w=100:h=50"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("args lack %q: %s", want, joined)
+		}
+	}
+	if strings.Index(joined, "drawbox") > strings.Index(joined, "crop") {
+		t.Errorf("masks must be drawn before the crop: %s", joined)
+	}
+	// the second sample is at 31 s, so the line belongs to the scene covering it
+	if st.got[1] != "hi" {
+		t.Errorf("stored %v", st.got)
 	}
 }

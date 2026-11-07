@@ -41,6 +41,8 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 	debug := fs.Bool("debug", false, "show the commands run and how long they took")
 	burned := fs.Bool("burned", false, "read subtitles burned into the picture instead of a subtitle track")
 	fps := fs.Int("fps", 2, "with --burned, frames sampled per second")
+	masks := fs.String("masks", "", `with --burned, areas to black out, such as watermarks: "w,h,x,y;..." in pixels or iw/ih expressions`)
+	rng := fs.String("range", "", "with --burned, the part of the film to read as FROM:TO, such as 1m30s:4m (either may be empty)")
 	cmd := &cobra.Command{Use: "ocr [flags] FILE", Short: "Read bitmap subtitles into a film's scenes", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
 		ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
 		file, err := filepath.Abs(args[0])
@@ -126,7 +128,16 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 		}
 		run := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout, OnIssues: issues}.Run
 		if *burned {
-			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: *fps, MinInk: 400, Timeout: *timeout, OnIssues: issues}.Run
+			ms, err := parseMasks(*masks)
+			if err != nil {
+				return err
+			}
+			from, to, err := parseRange(*rng)
+			if err != nil {
+				return err
+			}
+			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, FPS: *fps, MinInk: 400, Timeout: *timeout,
+				Masks: ms, From: from, To: to, OnIssues: issues}.Run
 		}
 		eng := engine.New(st, engine.WithStage("ocr", run))
 		defer func() { _ = eng.Close() }()

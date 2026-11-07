@@ -66,17 +66,17 @@ func (s *Store) ReplaceScenes(ctx context.Context, film core.FilmID, scenes []Sc
 		return err
 	}
 	ins, err := tx.PrepareContext(ctx,
-		`insert into scenes(film, start_ns, end_ns, frame, text, subtitle, norm) values (?, ?, ?, ?, ?, ?, ?)`)
+		`insert into scenes(film, start_ns, end_ns, frame, text, subtitle, translation, norm) values (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = ins.Close() }()
 	for _, sc := range scenes {
-		text, sub := sc.Text, ""
+		text, sub, tr := sc.Text, "", ""
 		if old, ok := kept[span{sc.Start, sc.End}]; ok && text == "" {
-			text, sub = old.text, old.sub
+			text, sub, tr = old.text, old.sub, old.tr
 		}
-		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, text, sub, foldAll(text, sub)); err != nil {
+		if _, err := ins.ExecContext(ctx, film, int64(sc.Start), int64(sc.End), sc.Frame, text, sub, tr, foldAll(text, sub, tr)); err != nil {
 			return fmt.Errorf("store: scenes for film %q: %w", film, err)
 		}
 	}
@@ -86,48 +86,74 @@ func (s *Store) ReplaceScenes(ctx context.Context, film core.FilmID, scenes []Sc
 // SetText sets the spoken text of a film's scenes, keeping the scenes themselves.
 // It is all or nothing: a scene that is not this film's fails the whole call.
 func (s *Store) SetText(ctx context.Context, film core.FilmID, text map[core.SceneID]string) error {
-	return s.setField(ctx, film, "text", "subtitle", text)
+	return s.setField(ctx, film, "text", text)
 }
 
 // SetSubtitle sets the on-screen subtitle of a film's scenes, all or nothing like SetText.
 func (s *Store) SetSubtitle(ctx context.Context, film core.FilmID, sub map[core.SceneID]string) error {
-	return s.setField(ctx, film, "subtitle", "text", sub)
+	return s.setField(ctx, film, "subtitle", sub)
 }
 
-// setField sets one text column and refolds norm from it and the other column.
-func (s *Store) setField(ctx context.Context, film core.FilmID, field, other string, vals map[core.SceneID]string) error {
+// SetTranslation sets the English translation of a film's scenes, all or nothing like SetText.
+func (s *Store) SetTranslation(ctx context.Context, film core.FilmID, tr map[core.SceneID]string) error {
+	return s.setField(ctx, film, "translation", tr)
+}
+
+// setField sets one text column and refolds norm from all three.
+func (s *Store) setField(ctx context.Context, film core.FilmID, field string, vals map[core.SceneID]string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	get := `select ` + other + ` from scenes where id = ? and film = ?`
+	const get = `select text, subtitle, translation from scenes where id = ? and film = ?`
 	upd, err := tx.PrepareContext(ctx, `update scenes set `+field+` = ?, norm = ? where id = ? and film = ?`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = upd.Close() }()
 	for id, v := range vals {
-		var o string
-		if err := tx.QueryRowContext(ctx, get, id, film).Scan(&o); errors.Is(err, sql.ErrNoRows) {
+		cols := map[string]*string{}
+		var text, sub, tr string
+		cols["text"], cols["subtitle"], cols["translation"] = &text, &sub, &tr
+		if err := tx.QueryRowContext(ctx, get, id, film).Scan(&text, &sub, &tr); errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("store: scene %d is not in film %q", id, film)
 		} else if err != nil {
 			return fmt.Errorf("store: %s for film %q: %w", field, film, err)
 		}
-		n := foldAll(v, o)
-		if field == "subtitle" {
-			n = foldAll(o, v)
-		}
-		if _, err := upd.ExecContext(ctx, v, n, id, film); err != nil {
+		*cols[field] = v
+		if _, err := upd.ExecContext(ctx, v, foldAll(text, sub, tr), id, film); err != nil {
 			return fmt.Errorf("store: %s for film %q: %w", field, film, err)
 		}
 	}
 	return tx.Commit()
 }
 
-// foldAll is the search form of a scene's spoken text and subtitle together.
-func foldAll(text, subtitle string) string { return Fold(strings.TrimSpace(text + " " + subtitle)) }
+// foldAll is the search form of a scene's spoken text, subtitle and translation together.
+func foldAll(parts ...string) string {
+	var kept []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			kept = append(kept, p)
+		}
+	}
+	return Fold(strings.Join(kept, " "))
+}
+
+// SceneLines is the text of one scene.
+type SceneLines struct {
+	ID                          core.SceneID
+	Text, Subtitle, Translation string
+}
+
+// Texts lists a film's scenes with their text, in time order.
+func (s *Store) Texts(ctx context.Context, film core.FilmID) iter.Seq2[SceneLines, error] {
+	return query(ctx, s.db, func(r *sql.Rows) (l SceneLines, err error) {
+		err = r.Scan(&l.ID, &l.Text, &l.Subtitle, &l.Translation)
+		return l, err
+	}, `select id, text, subtitle, translation from scenes where film = ? order by start_ns, id`, film)
+}
 
 // Films lists films by title, then ID.
 func (s *Store) Films(ctx context.Context) iter.Seq2[core.Film, error] {
@@ -167,7 +193,7 @@ func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, err
 		return nil, fmt.Errorf("store: search limit must be positive, got %d", q.Limit)
 	}
 
-	stmt := `select s.id, s.film, s.start_ns, s.end_ns, s.frame, s.text, s.subtitle, `
+	stmt := `select s.id, s.film, s.start_ns, s.end_ns, s.frame, s.text, s.subtitle, s.translation, `
 	order := `s.id`
 	var args []any
 	if len(long) > 0 {
@@ -188,7 +214,7 @@ func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, err
 
 	rows := query(ctx, s.db, func(r *sql.Rows) (h core.Hit, err error) {
 		var start, end int64
-		err = r.Scan(&h.Scene.ID, &h.Scene.Film, &start, &end, &h.Scene.Frame, &h.Text, &h.Subtitle, &h.Score)
+		err = r.Scan(&h.Scene.ID, &h.Scene.Film, &start, &end, &h.Scene.Frame, &h.Text, &h.Subtitle, &h.Translation, &h.Score)
 		h.Scene.Start, h.Scene.End = time.Duration(start), time.Duration(end)
 		return h, err
 	}, stmt, args...)
@@ -238,11 +264,11 @@ func query[T any](ctx context.Context, db *sql.DB, scan func(*sql.Rows) (T, erro
 
 type span struct{ start, end time.Duration }
 
-type oldText struct{ text, sub string }
+type oldText struct{ text, sub, tr string }
 
 // keptText reads the text of a film's scenes, keyed by their start and end.
 func keptText(ctx context.Context, tx *sql.Tx, film core.FilmID) (map[span]oldText, error) {
-	rows, err := tx.QueryContext(ctx, `select start_ns, end_ns, text, subtitle from scenes where film = ?`, film)
+	rows, err := tx.QueryContext(ctx, `select start_ns, end_ns, text, subtitle, translation from scenes where film = ?`, film)
 	if err != nil {
 		return nil, fmt.Errorf("store: scenes of film %q: %w", film, err)
 	}
@@ -251,7 +277,7 @@ func keptText(ctx context.Context, tx *sql.Tx, film core.FilmID) (map[span]oldTe
 	for rows.Next() {
 		var s, e int64
 		var o oldText
-		if err := rows.Scan(&s, &e, &o.text, &o.sub); err != nil {
+		if err := rows.Scan(&s, &e, &o.text, &o.sub, &o.tr); err != nil {
 			return nil, fmt.Errorf("store: scenes of film %q: %w", film, err)
 		}
 		out[span{time.Duration(s), time.Duration(e)}] = o

@@ -70,8 +70,8 @@ func TestNew(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 3 {
-		t.Errorf("user_version = %d, %v; want 3", v, err)
+	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 4 {
+		t.Errorf("user_version = %d, %v; want 4", v, err)
 	}
 }
 
@@ -386,5 +386,78 @@ func TestStore_ReplaceScenesPrefersNewText(t *testing.T) {
 	}
 	if hitCount(t, s, "old") != 0 || hitCount(t, s, "new") != 1 {
 		t.Error("supplied text should replace the old text")
+	}
+}
+
+func TestStore_SetTranslationIsSearchableAndKeepsOtherText(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "沈めろ"))
+	id := sceneIDs(t, s, "a")[0]
+	if err := s.SetSubtitle(ctx, "a", map[core.SceneID]string{id: "おい"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTranslation(ctx, "a", map[core.SceneID]string{id: "Hey, sink it"}); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := s.Search(ctx, core.SearchQuery{Text: "sink", Limit: 10})
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("english query: %+v, %v", hits, err)
+	}
+	if h := hits[0]; h.Translation != "Hey, sink it" || h.Text != "沈めろ" || h.Subtitle != "おい" {
+		t.Errorf("hit = %+v", h)
+	}
+	if hitCount(t, s, "沈めろ") != 1 || hitCount(t, s, "おい") != 1 {
+		t.Error("setting a translation broke the original search")
+	}
+	if err := s.SetSubtitle(ctx, "a", map[core.SceneID]string{id: "ねえ"}); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount(t, s, "sink") != 1 {
+		t.Error("setting a subtitle dropped the translation from search")
+	}
+}
+
+func TestStore_SetTranslationIsAllOrNothing(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "x"))
+	id := sceneIDs(t, s, "a")[0]
+	if err := s.SetTranslation(ctx, "a", map[core.SceneID]string{id: "changed", id + 99: "y"}); err == nil {
+		t.Error("expected an error for a scene that is not the film's")
+	}
+	if hitCount(t, s, "changed") != 0 {
+		t.Error("a failed SetTranslation changed something")
+	}
+}
+
+func TestStore_TextsListsWhatToTranslate(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "one"), line(2, "two"))
+	ids := sceneIDs(t, s, "a")
+	if err := s.SetSubtitle(ctx, "a", map[core.SceneID]string{ids[1]: "sub"}); err != nil {
+		t.Fatal(err)
+	}
+	got := collect(t, s.Texts(ctx, "a"))
+	if len(got) != 2 || got[0].Text != "one" || got[1].Subtitle != "sub" || got[1].ID != ids[1] {
+		t.Errorf("texts = %+v", got)
+	}
+}
+
+func TestStore_ReplaceScenesKeepsTranslation(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a"}, line(1, "x"))
+	if err := s.SetTranslation(ctx, "a", map[core.SceneID]string{sceneIDs(t, s, "a")[0]: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	again := line(1, "x")
+	again.Text = ""
+	if err := s.ReplaceScenes(ctx, "a", []store.SceneText{again}); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount(t, s, "hello") != 1 {
+		t.Error("rescan dropped the translation of an unchanged scene")
 	}
 }

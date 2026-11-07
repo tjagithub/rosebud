@@ -20,8 +20,15 @@ Later sources win: the defaults, `rosebud/rose.conf` in your user config
 directory, `rose.conf` in a film's `.film` bundle, `ROSE_`-prefixed
 environment variables (`ROSE_OCR_MODEL`), then command-line flags.
 Keys: `FFMPEG_HWACCEL` (`auto`, `none`, or a method from `ffmpeg -hwaccels` such as `cuda`;
-only VideoToolbox is tested), `FFMPEG_HWACCEL_DEVICE`, `OCR_LANG`, `OCR_MODEL`, `OCR_TIMEOUT`, `OCR_BATCH`, `CACHE_DIR`,
+only VideoToolbox is tested), `FFMPEG_HWACCEL_DEVICE`, `OCR_LANG`, `OCR_MODEL`, `OCR_TIMEOUT`, `OCR_BATCH`, `TRANSLATE_LANG`, `TRANSLATE_MODEL`,
+`TRANSLATE_TIMEOUT`, `TRANSLATE_BATCH`, `CACHE_DIR`,
 `CACHE_MAX_MB`, `CACHE_MAX_AGE`.
 
 OCR results are cached per page in your user cache directory, trimmed by size
 and age on each run. `rose cache clear` deletes them.
+
+## Translation
+
+`rose translate FILE` adds an English translation to each scene so English queries find it.
+It runs [PLaMo-3 translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-MLX-4bit)
+(Preferred Networks, PLaMo Community License; built with PLaMo) at a pinned revision, and its remote code runs on your machine.

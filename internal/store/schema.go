@@ -8,7 +8,7 @@ import (
 )
 
 // migrations[i] upgrades user_version i to i+1. Append only; never edit.
-var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3}
+var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3, toV4}
 
 func toV1(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
@@ -77,6 +77,13 @@ insert into scene_fts(scene_fts) values ('rebuild');`)
 // both, so the index needs no change.
 func toV3(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `alter table scenes add column subtitle text not null default ''`)
+	return err
+}
+
+// toV4 adds the English translation. norm will follow it from now on; older
+// rows have none, so their norm is already right.
+func toV4(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `alter table scenes add column translation text not null default ''`)
 	return err
 }
 

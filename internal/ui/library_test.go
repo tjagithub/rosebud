@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/ui"
 	"github.com/tjagithub/rosebud/internal/ui/uitest"
@@ -57,7 +59,7 @@ func TestLibraryListsFilmsWithSceneCounts(t *testing.T) {
 
 func TestLibrarySlashOpensSearchAndEscReturns(t *testing.T) {
 	tui, f := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}})
-	tui.Type("/")
+	tui.Type("s")
 	tui.Screen().Contains("search:")
 	tui.Type("x")
 	if len(f.queries) == 0 {
@@ -65,7 +67,7 @@ func TestLibrarySlashOpensSearchAndEscReturns(t *testing.T) {
 	}
 	tui.Press("esc")
 	tui.Screen().Contains("Sonatine")
-	tui.Type("/")
+	tui.Type("s")
 	tui.Screen().Contains("found it")
 }
 
@@ -75,3 +77,31 @@ func TestLibraryShowsErrorAndEmptyHint(t *testing.T) {
 	tui, _ = library(t, fakeLib{})
 	tui.Screen().Contains("rose scenes")
 }
+
+func TestLibraryShowsKeyHelp(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}})
+	tui.Screen().Contains("s search", "/ filter films", "esc quit")
+}
+
+func TestLibraryFilterNarrowsFilmsAndEscClearsItBeforeQuitting(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}, {ID: "b", Title: "Hana-bi"}}})
+	tui.Type("/")
+	tui.Type("hana")
+	tui.Screen().Contains("Hana-bi")
+	tui.Screen().Lacks("Sonatine")
+	tui.Press("esc")
+	tui.Press("esc")
+	tui.Screen().Contains("Sonatine", "Hana-bi")
+	if _, cmd := tui.Model().Update(escKey()); cmd == nil {
+		t.Fatal("esc on an unfiltered library must quit")
+	}
+}
+
+func TestLibrarySKeyTypesIntoTheFilterInsteadOfOpeningSearch(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}})
+	tui.Type("/")
+	tui.Type("s")
+	tui.Screen().Lacks("search:")
+}
+
+func escKey() tea.Msg { return tea.KeyPressMsg{Code: tea.KeyEscape} }

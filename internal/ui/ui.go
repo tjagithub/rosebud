@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -12,6 +13,7 @@ import (
 type Model struct {
 	stack, overlays []Screen
 	size            tea.WindowSizeMsg
+	help            help.Model
 }
 
 // New returns the interface, opening on the search screen that shows up to
@@ -22,9 +24,9 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 		o(&cfg)
 	}
 	if cfg.lib == nil {
-		return &Model{stack: []Screen{newSearch(src, limit, cfg)}}
+		return &Model{help: help.New(), stack: []Screen{newSearch(src, limit, cfg)}}
 	}
-	return &Model{stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)))}}
+	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)))}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.
@@ -43,7 +45,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.size = msg
-		return m, m.broadcast(msg)
+		m.help.SetWidth(msg.Width)
+		return m, m.broadcast(m.body())
 	case PushMsg:
 		m.stack = append(m.stack, msg.Screen)
 		return m, tea.Batch(msg.Screen.Init(), m.sendSize(msg.Screen))
@@ -61,6 +64,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
+			if c, ok := m.top().(Capturer); ok && c.Capturing() {
+				return m, m.updateTop(msg)
+			}
 			switch {
 			case len(m.overlays) > 0:
 				m.closeOverlay()
@@ -118,12 +124,15 @@ func (m *Model) sendSize(s Screen) tea.Cmd {
 	if m.size.Width == 0 {
 		return nil
 	}
-	_, c := s.Update(m.size)
+	_, c := s.Update(m.body())
 	return c
 }
 
 func (m *Model) View() tea.View {
 	out := m.stack[len(m.stack)-1].View()
+	if km, ok := m.top().(help.KeyMap); ok {
+		out += "\n" + m.help.View(km)
+	}
 	for _, o := range m.overlays {
 		out = over(out, o.View())
 	}
@@ -144,3 +153,16 @@ func over(base, top string) string {
 
 // searchOnce keeps one search screen, so coming back to it finds the query as left.
 func searchOnce(s *searchScreen) func() Screen { return func() Screen { return s } }
+
+// top is the overlay on top, or else the top screen.
+func (m *Model) top() Screen {
+	if n := len(m.overlays); n > 0 {
+		return m.overlays[n-1]
+	}
+	return m.stack[len(m.stack)-1]
+}
+
+// body is the window size left for a screen once the help line is taken.
+func (m *Model) body() tea.WindowSizeMsg {
+	return tea.WindowSizeMsg{Width: m.size.Width, Height: max(m.size.Height-1, 1)}
+}

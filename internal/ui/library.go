@@ -3,10 +3,13 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"iter"
-	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -29,23 +32,50 @@ type filmsMsg struct {
 
 type countMsg struct {
 	Film core.FilmID
-	N    int
+	N    int // -1 when the scenes could not be read
 }
+
+// filmItem is a film with its scene count, once known.
+type filmItem struct {
+	core.Film
+	scenes int
+	known  bool
+}
+
+func (f filmItem) FilterValue() string { return f.Title }
+
+type libraryKeys struct{ search, filter, quit key.Binding }
+
+func (k libraryKeys) ShortHelp() []key.Binding  { return []key.Binding{k.search, k.filter, k.quit} }
+func (k libraryKeys) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
 // libraryScreen lists the films with how many scenes each has.
 type libraryScreen struct {
 	lib    Library
 	search func() Screen
-	films  []core.Film
-	counts map[core.FilmID]int
-	sel    int
+	list   list.Model
+	keys   libraryKeys
 	err    error
-	w, h   int
 }
 
 func newLibrary(lib Library, search func() Screen) *libraryScreen {
-	return &libraryScreen{lib: lib, search: search, counts: map[core.FilmID]int{}}
+	l := list.New(nil, filmRow{}, 0, 0)
+	l.SetShowTitle(false)
+	l.SetShowHelp(false)
+	l.SetShowStatusBar(false)
+	l.SetShowPagination(false)
+	return &libraryScreen{lib: lib, search: search, list: l, keys: libraryKeys{
+		search: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "search")),
+		filter: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter films")),
+		quit:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
+	}}
 }
+
+func (l *libraryScreen) ShortHelp() []key.Binding  { return l.keys.ShortHelp() }
+func (l *libraryScreen) FullHelp() [][]key.Binding { return l.keys.FullHelp() }
+
+// Capturing is true while the filter box is open or a filter is applied.
+func (l *libraryScreen) Capturing() bool { return l.list.FilterState() != list.Unfiltered }
 
 func (l *libraryScreen) Init() tea.Cmd {
 	return func() tea.Msg {
@@ -80,59 +110,75 @@ func (l *libraryScreen) count(id core.FilmID) tea.Cmd {
 func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		l.w, l.h = msg.Width, msg.Height
+		l.list.SetSize(msg.Width, max(msg.Height-2, 1))
+		return l, nil
 	case filmsMsg:
-		l.films, l.err = msg.Films, msg.Err
-		var cmds []tea.Cmd
-		for _, f := range msg.Films {
+		l.err = msg.Err
+		items := make([]list.Item, len(msg.Films))
+		cmds := make([]tea.Cmd, 0, len(msg.Films)+1)
+		for i, f := range msg.Films {
+			items[i] = filmItem{Film: f}
 			cmds = append(cmds, l.count(f.ID))
 		}
-		return l, tea.Batch(cmds...)
+		return l, tea.Batch(append(cmds, l.list.SetItems(items))...)
 	case countMsg:
-		l.counts[msg.Film] = msg.N
+		for i, it := range l.list.Items() {
+			if f := it.(filmItem); f.ID == msg.Film {
+				f.scenes, f.known = msg.N, true
+				return l, l.list.SetItem(i, f)
+			}
+		}
+		return l, nil
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k":
-			l.sel = max(l.sel-1, 0)
-		case "down", "j":
-			l.sel = max(min(l.sel+1, len(l.films)-1), 0)
-		case "/":
+		if l.list.FilterState() == list.Unfiltered && key.Matches(msg, l.keys.search) {
 			return l, Push(l.search())
 		}
 	}
-	return l, nil
+	var cmd tea.Cmd
+	l.list, cmd = l.list.Update(msg)
+	return l, cmd
 }
 
 func (l *libraryScreen) View() string {
-	var b strings.Builder
-	b.WriteString(dim.Render("films    / search   esc quit") + "\n\n")
-	if l.err != nil {
-		b.WriteString("error: " + l.err.Error() + "\n")
+	out := dim.Render("films") + "\n\n"
+	switch {
+	case l.err != nil:
+		out += "error: " + l.err.Error()
+	case len(l.list.Items()) == 0:
+		out += dim.Render("no films yet: run `rose scenes FILE`")
+	default:
+		out += l.list.View()
 	}
-	if len(l.films) == 0 && l.err == nil {
-		b.WriteString(dim.Render("no films yet: run `rose scenes FILE`") + "\n")
-	}
-	w := max(l.w, 20)
-	for i, f := range l.films {
-		line := fmt.Sprintf("%-40s %9s  %s", f.Title, Clock(f.Duration), scenesLabel(l.counts, f.ID))
-		line = lipgloss.NewStyle().MaxWidth(w).Render(line)
-		if i == l.sel {
-			line = selected.Render(line)
-		}
-		b.WriteString(line + "\n")
-	}
-	return b.String()
+	return out
 }
 
-func scenesLabel(counts map[core.FilmID]int, id core.FilmID) string {
-	switch n, ok := counts[id]; {
-	case !ok:
+// filmRow draws a film as one line.
+type filmRow struct{}
+
+func (filmRow) Height() int                         { return 1 }
+func (filmRow) Spacing() int                        { return 0 }
+func (filmRow) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+func (filmRow) Render(w io.Writer, m list.Model, i int, it list.Item) {
+	f := it.(filmItem)
+	line := fmt.Sprintf("%-40s %9s  %s", f.Title, Clock(f.Duration), scenesLabel(f))
+	line = lipgloss.NewStyle().MaxWidth(max(m.Width(), 20)).Render(line)
+	if i == m.Index() {
+		line = selected.Render(line)
+	}
+	_, _ = io.WriteString(w, line)
+}
+
+func scenesLabel(f filmItem) string {
+	switch {
+	case !f.known:
 		return "…"
-	case n < 0:
+	case f.scenes < 0:
 		return "?"
-	case n == 1:
+	case f.scenes == 1:
 		return "1 scene"
 	default:
-		return fmt.Sprintf("%d scenes", n)
+		return fmt.Sprintf("%d scenes", f.scenes)
 	}
 }
+
+var _ help.KeyMap = (*libraryScreen)(nil)

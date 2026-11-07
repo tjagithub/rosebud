@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TUI wraps a model; each call sends input and runs the commands it returns.
@@ -22,7 +24,7 @@ func New(t *testing.T, m tea.Model) *TUI {
 	u := &TUI{t: t, m: m}
 	u.Send(tea.WindowSizeMsg{Width: 80, Height: 24})
 	if cmd := m.Init(); cmd != nil {
-		u.run([]tea.Msg{cmd()})
+		u.run([]tea.Msg{u.call(cmd)})
 	}
 	return u
 }
@@ -80,7 +82,7 @@ func (u *TUI) run(queue []tea.Msg) {
 		case tea.BatchMsg:
 			for _, c := range m {
 				if c != nil {
-					queue = append(queue, c())
+					queue = append(queue, u.call(c))
 				}
 			}
 			continue
@@ -88,13 +90,13 @@ func (u *TUI) run(queue []tea.Msg) {
 		var cmd tea.Cmd
 		u.m, cmd = u.m.Update(next)
 		if cmd != nil {
-			queue = append(queue, cmd())
+			queue = append(queue, u.call(cmd))
 		}
 	}
 }
 
 // Screen is the rendered text.
-func (u *TUI) Screen() Screen { return Screen{t: u.t, text: u.m.View().Content} }
+func (u *TUI) Screen() Screen { return Screen{t: u.t, text: ansi.Strip(u.m.View().Content)} }
 
 // Screen is a snapshot of what the user sees.
 type Screen struct {
@@ -124,3 +126,18 @@ func (s Screen) Lacks(parts ...string) {
 		}
 	}
 }
+
+// call runs cmd for its message. One still waiting after callWait is a timer,
+// such as a cursor blink, and is dropped so it cannot re-arm forever.
+func (u *TUI) call(cmd tea.Cmd) tea.Msg {
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case m := <-done:
+		return m
+	case <-time.After(callWait):
+		return nil
+	}
+}
+
+const callWait = 100 * time.Millisecond

@@ -29,3 +29,7 @@ func Push(s Screen) tea.Cmd { return func() tea.Msg { return PushMsg{s} } }
 func Pop() tea.Cmd          { return func() tea.Msg { return PopMsg{} } }
 func Open(o Screen) tea.Cmd { return func() tea.Msg { return OpenMsg{o} } }
 func Close() tea.Cmd        { return func() tea.Msg { return CloseMsg{} } }
+
+// Capturer is a screen that is taking text, such as a filter box. While it
+// reports true, esc and the other keys the root usually keeps go to it.
+type Capturer interface{ Capturing() bool }

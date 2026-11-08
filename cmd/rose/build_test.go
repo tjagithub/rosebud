@@ -77,3 +77,13 @@ func TestBuildSkipsAStageWithNothingToDo(t *testing.T) {
 		t.Errorf("output = %q", out.String())
 	}
 }
+
+func TestBuildStagesIncludeSpeechByDefault(t *testing.T) {
+	var names []string
+	for _, s := range buildStages(deps{}) {
+		names = append(names, s.name)
+	}
+	if got, want := strings.Join(names, ","), "scenes,subs,ocr,translate"; got != want {
+		t.Errorf("stages = %s, want %s", got, want)
+	}
+}

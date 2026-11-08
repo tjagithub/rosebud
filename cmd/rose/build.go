@@ -18,8 +18,13 @@ type stage struct {
 
 // buildStages is the whole stack, in the order it runs.
 func buildStages(d deps) []stage {
+	tr := d.transcriber
+	if tr == nil {
+		tr = parakeet
+	}
 	return []stage{
 		{"scenes", scenesCmd},
+		{"subs", func() *cobra.Command { return subsCmd(tr) }},
 		{"ocr", func() *cobra.Command { return ocrCmd(d.reader) }},
 		{"translate", func() *cobra.Command { return translateCmd(nil) }},
 	}

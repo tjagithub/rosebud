@@ -64,13 +64,14 @@ var (
 )
 
 var (
-	filterKey = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "filter"))
+	filterKey = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
+	pickKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "scenes"))
 	focusKey  = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus box"))
 	scrollKey = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scroll"))
 )
 
 func (d *detailScreen) ShortHelp() []key.Binding {
-	return []key.Binding{stepKey, focusKey, scrollKey, filterKey, backKey}
+	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, filterKey, backKey}
 }
 func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
@@ -84,6 +85,12 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return d, d.reload()
 	case FrameMsg:
 		return d, tea.Batch(d.fr.onFrame(msg), d.th.onFrame(msg))
+	case jumpMsg:
+		if msg.To != d || msg.I >= len(d.hits) {
+			return d, nil
+		}
+		d.i = msg.I
+		return d, d.reload()
 	case scenesMsg:
 		if msg.ID != d.loadID {
 			return d, nil
@@ -119,7 +126,9 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return d, d.step(-1)
 		case "right":
 			return d, d.step(1)
-		case "s", "/":
+		case "s":
+			return d, Open(newPicker(d))
+		case "/":
 			cmd := d.f.open()
 			d.relayout(false)
 			return d, cmd

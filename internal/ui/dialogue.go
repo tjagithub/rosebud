@@ -21,7 +21,7 @@ type filter struct {
 
 func newFilter() filter {
 	in := textinput.New()
-	in.Prompt = "s "
+	in.Prompt = "/ "
 	return filter{in: in}
 }
 

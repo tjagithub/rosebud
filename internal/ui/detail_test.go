@@ -102,7 +102,7 @@ func TestFilterNarrowsDialogueAndKeepsOnEnter(t *testing.T) {
 	tui, _ := start(t, &fakeSearch{hits: hits})
 	tui.Type("x")
 	tui.Press("enter")
-	tui.Type("s")
+	tui.Type("/")
 	tui.Type("alp")
 	tui.Press("enter")
 	tui.Screen().Contains("filter: alp", "scene 1")
@@ -118,7 +118,7 @@ func TestEscWhileTypingFilterStaysOnScene(t *testing.T) {
 	tui, _ := start(t, &fakeSearch{hits: []core.Hit{hit(1, time.Second, "one")}})
 	tui.Type("x")
 	tui.Press("enter")
-	tui.Type("s")
+	tui.Type("/")
 	tui.Press("esc")
 	tui.Screen().Contains("scene 1")
 }
@@ -159,4 +159,26 @@ func TestClickFocusesBoxAndTabCycles(t *testing.T) {
 	tui.Click(60, 20)
 	tui.Press("tab")
 	tui.Screen().Contains("scene 1")
+}
+
+func TestSOpensScenePickerAndEnterJumps(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("s")
+	tui.Screen().Contains("chapter", "length", "pick scene")
+	tui.Type("14")
+	tui.Press("enter")
+	tui.Screen().Contains("scene 14")
+	tui.Screen().Lacks("chapter")
+}
+
+func TestPickerEscCancels(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(5)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("s")
+	tui.Press("esc")
+	tui.Screen().Contains("scene 1")
+	tui.Screen().Lacks("chapter")
 }

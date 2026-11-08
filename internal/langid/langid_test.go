@@ -38,7 +38,7 @@ func TestDetect_AveragesAndNamesTheWinner(t *testing.T) {
 		"10s": {"ja": 0.99, "en": 0.01},
 		"20s": {"en": 0.65, "ja": 0.35}, // a fade
 	}
-	r, err := langid.Detect(t.Context(), d, cut, []time.Duration{0, sec(10), sec(20)})
+	r, err := langid.Detect(t.Context(), d, cut, []time.Duration{0, sec(10), sec(20)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +49,11 @@ func TestDetect_AveragesAndNamesTheWinner(t *testing.T) {
 
 func TestDetect_SkipsUncutAndUnscoredWindows(t *testing.T) {
 	d := fake{"10s": {"fr": 1}}
-	r, err := langid.Detect(t.Context(), d, cut, []time.Duration{0, sec(10), sec(99)})
+	r, err := langid.Detect(t.Context(), d, cut, []time.Duration{0, sec(10), sec(99)}, 0)
 	if err != nil || r.Language != "fr" || r.Windows != 1 || r.Score != 1 {
 		t.Errorf("got %+v, %v", r, err)
 	}
-	if _, err := langid.Detect(t.Context(), fake{}, cut, []time.Duration{0}); !errors.Is(err, langid.ErrNoSpeech) {
+	if _, err := langid.Detect(t.Context(), fake{}, cut, []time.Duration{0}, 0); !errors.Is(err, langid.ErrNoSpeech) {
 		t.Errorf("err = %v, want ErrNoSpeech", err)
 	}
 }
@@ -65,7 +65,7 @@ func (broken) Windows(context.Context, []string) ([]langid.Probs, error) {
 }
 
 func TestDetect_ModelFailureIsAnError(t *testing.T) {
-	_, err := langid.Detect(t.Context(), broken{}, cut, []time.Duration{0})
+	_, err := langid.Detect(t.Context(), broken{}, cut, []time.Duration{0}, 0)
 	if err == nil || errors.Is(err, langid.ErrNoSpeech) || !strings.Contains(err.Error(), "model crashed") {
 		t.Errorf("err = %v", err)
 	}
@@ -76,5 +76,21 @@ func TestLoudWindows_DropsSilence(t *testing.T) {
 	got := langid.LoudWindows(rms, 0.01)
 	if len(got) != 2 || got[0] != sec(10) || got[1] != sec(20) {
 		t.Errorf("got %v", got)
+	}
+}
+
+func TestDetect_FlatWindowsDoNotVote(t *testing.T) {
+	d := fake{
+		"0s":  {"ja": 0.95, "en": 0.05},
+		"10s": {"en": 0.69, "ko": 0.3},  // peaked enough only for a low bar
+		"20s": {"ko": 0.28, "ja": 0.25}, // music
+		"30s": {"ja": 0.8, "en": 0.2},
+	}
+	r, err := langid.Detect(t.Context(), d, cut, []time.Duration{0, sec(10), sec(20), sec(30)}, 0.7)
+	if err != nil || r.Language != "ja" || r.Windows != 2 {
+		t.Errorf("got %+v, %v, want ja over 2", r, err)
+	}
+	if _, err := langid.Detect(t.Context(), d, cut, []time.Duration{sec(20)}, 0.7); !errors.Is(err, langid.ErrNoSpeech) {
+		t.Errorf("only music: err = %v, want ErrNoSpeech", err)
 	}
 }

@@ -33,8 +33,9 @@ type Result struct {
 var ErrNoSpeech = errors.New("langid: no window could be scored")
 
 // Detect cuts the windows at the given times, scores them together and
-// averages. A window that cannot be cut or scored is skipped.
-func Detect(ctx context.Context, d Detector, cut Cutter, at []time.Duration) (Result, error) {
+// averages those whose best guess has at least minTop probability: music and
+// noise score flat, speech peaked. Windows that fail to cut or score are skipped.
+func Detect(ctx context.Context, d Detector, cut Cutter, at []time.Duration, minTop float64) (Result, error) {
 	var wavs []string
 	for _, t := range at {
 		if err := ctx.Err(); err != nil {
@@ -54,7 +55,7 @@ func Detect(ctx context.Context, d Detector, cut Cutter, at []time.Duration) (Re
 	sum := Probs{}
 	n := 0
 	for _, p := range scored {
-		if p == nil {
+		if p == nil || peak(p) < minTop {
 			continue
 		}
 		for l, v := range p {
@@ -85,4 +86,12 @@ func LoudWindows(rms map[time.Duration]float64, min float64) []time.Duration {
 	}
 	slices.Sort(out)
 	return out
+}
+
+func peak(p Probs) float64 {
+	m := 0.0
+	for _, v := range p {
+		m = max(m, v)
+	}
+	return m
 }

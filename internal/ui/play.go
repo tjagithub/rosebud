@@ -2,10 +2,12 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -157,11 +159,13 @@ func pump(ctx context.Context, pb playback, enc func(player.Frame) playFrameMsg,
 					return
 				}
 			}
+			ready := time.Since(start) - time.Duration(i)*step
 			select {
 			case out <- m:
 			case <-ctx.Done():
 				return
 			}
+			traceFrame("pump", i, ready, time.Since(start)-time.Duration(i)*step)
 		}
 	}()
 	return out
@@ -229,7 +233,28 @@ func (d *detailScreen) onPlayFrame(msg playFrameMsg) tea.Cmd {
 	if msg.Data == "" && msg.Cols == 0 && msg.At == 0 {
 		return d.stopPlay()
 	}
+	traceFrame("view", int(msg.At/(time.Second/playFPS)), 0, 0)
 	p.at = msg.At
 	d.fr.shown, d.fr.cols, d.fr.rows = "play", msg.Cols, msg.Rows
 	return tea.Batch(tea.Raw(msg.Data), d.next(p))
+}
+
+var (
+	traceOnce sync.Once
+	traceFile *os.File
+	traceZero = time.Now()
+)
+
+// traceFrame appends a line to the file named by ROSE_PLAY_TRACE, if set:
+// where a frame is, when, how late it was due, and how late it was sent.
+func traceFrame(where string, i int, due, sent time.Duration) {
+	traceOnce.Do(func() {
+		if path := os.Getenv("ROSE_PLAY_TRACE"); path != "" {
+			traceFile, _ = os.Create(path)
+		}
+	})
+	if traceFile != nil {
+		fmt.Fprintf(traceFile, "%s %d t=%d due_late=%d sent_late=%d\n", where, i,
+			time.Since(traceZero).Milliseconds(), due.Milliseconds(), sent.Milliseconds())
+	}
 }

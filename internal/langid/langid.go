@@ -1,10 +1,11 @@
-// Package langid tells which language a film speaks. A Detector scores one
-// window of audio; Detect averages over windows, which absorbs fades and strays.
+// Package langid tells which language a film speaks. A Detector scores
+// windows of audio; Detect averages them, which absorbs fades and strays.
 package langid
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 )
@@ -12,10 +13,14 @@ import (
 // Probs maps a language code (ISO 639-1 where one exists) to its probability.
 type Probs map[string]float64
 
-// Detector scores the window of audio that starts at the given time.
+// Detector scores 16 kHz mono WAVs in one go, since loading the model costs
+// more than scoring. The result has one entry per WAV, nil if it was unreadable.
 type Detector interface {
-	Window(ctx context.Context, at time.Duration) (Probs, error)
+	Windows(ctx context.Context, wavs []string) ([]Probs, error)
 }
+
+// Cutter writes the window of audio starting at the given time as a WAV.
+type Cutter func(ctx context.Context, at time.Duration) (string, error)
 
 // Result is the language and how sure we are, e.g. {"ja", 0.80}.
 type Result struct {
@@ -24,20 +29,32 @@ type Result struct {
 	Windows  int
 }
 
-// ErrNoSpeech is returned when no window could be scored.
+// ErrNoSpeech is returned when no window could be cut and scored.
 var ErrNoSpeech = errors.New("langid: no window could be scored")
 
-// Detect averages the windows at the given times. A failed window is skipped;
-// Detect fails only if all do, or ctx ends.
-func Detect(ctx context.Context, d Detector, at []time.Duration) (Result, error) {
-	sum := Probs{}
-	n := 0
+// Detect cuts the windows at the given times, scores them together and
+// averages. A window that cannot be cut or scored is skipped.
+func Detect(ctx context.Context, d Detector, cut Cutter, at []time.Duration) (Result, error) {
+	var wavs []string
 	for _, t := range at {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		p, err := d.Window(ctx, t)
-		if err != nil {
+		if w, err := cut(ctx, t); err == nil {
+			wavs = append(wavs, w)
+		}
+	}
+	if len(wavs) == 0 {
+		return Result{}, ErrNoSpeech
+	}
+	scored, err := d.Windows(ctx, wavs)
+	if err != nil {
+		return Result{}, fmt.Errorf("langid: %w", err)
+	}
+	sum := Probs{}
+	n := 0
+	for _, p := range scored {
+		if p == nil {
 			continue
 		}
 		for l, v := range p {

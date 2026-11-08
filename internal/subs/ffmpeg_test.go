@@ -101,7 +101,7 @@ func TestDetectSilences_ExecError(t *testing.T) {
 func TestFFmpegCutter(t *testing.T) {
 	dir := t.TempDir()
 	var calls []call
-	cut := subs.FFmpegCutter(fakeExec("", nil, &calls), "f.mkv", dir)
+	cut := subs.FFmpegCutter(fakeExec("0", nil, &calls), "f.mkv", dir)
 
 	wav, err := cut(t.Context(), subs.Span{Start: 90*time.Second + 500*time.Millisecond, End: 120 * time.Second})
 	if err != nil {
@@ -110,9 +110,9 @@ func TestFFmpegCutter(t *testing.T) {
 	if want := filepath.Join(dir, "00090500-00120000.wav"); wav != want {
 		t.Errorf("wav = %q, want %q", wav, want)
 	}
-	a := calls[0].args
+	a := calls[len(calls)-1].args
 	for _, seq := range [][]string{
-		{"-ss", "90.5"}, {"-t", "29.5"}, {"-i", "f.mkv"}, {"-ignore_editlist", "1"}, {"-vn"}, {"-ac", "1"}, {"-ar", "16000"}, {"-nostdin"}, {"-y"},
+		{"-ss", "90.5"}, {"-t", "29.5"}, {"-i", "f.mkv"}, {"-vn"}, {"-ac", "1"}, {"-ar", "16000"}, {"-nostdin"}, {"-y"},
 	} {
 		if !has(a, seq...) {
 			t.Errorf("args %v lack %v", a, seq)
@@ -125,9 +125,80 @@ func TestFFmpegCutter(t *testing.T) {
 	if slices.Index(a, "-ss") > slices.Index(a, "-i") {
 		t.Errorf("-ss after -i: %v", a)
 	}
-	// Input options only act before -i; a late video start must not eat audio.
-	if slices.Index(a, "-ignore_editlist") > slices.Index(a, "-i") {
-		t.Errorf("-ignore_editlist after -i: %v", a)
+}
+
+// -ignore_editlist belongs to the mov demuxer: ffmpeg refuses it for any other
+// container, and it must come before -i to act.
+func TestFFmpegCutter_IgnoreEditlistOnlyForMov(t *testing.T) {
+	for file, want := range map[string]bool{
+		"f.mkv": false, "f.avi": false, "f.webm": false,
+		"f.mp4": true, "F.MOV": true, "f.m4v": true, "f.m4a": true,
+	} {
+		var calls []call
+		cut := subs.FFmpegCutter(fakeExec("", nil, &calls), file, t.TempDir())
+		if _, err := cut(t.Context(), subs.Span{End: sec(1)}); err != nil {
+			t.Fatal(err)
+		}
+		a := calls[len(calls)-1].args
+		i := slices.Index(a, "-ignore_editlist")
+		if (i >= 0) != want {
+			t.Errorf("%s: -ignore_editlist present = %v, want %v: %v", file, i >= 0, want, a)
+		}
+		if want && i > slices.Index(a, "-i") {
+			t.Errorf("%s: -ignore_editlist after -i: %v", file, a)
+		}
+	}
+}
+
+func TestFFmpegCutter_MatroskaSeeksOutputSideBeforeVideoStarts(t *testing.T) {
+	var calls []call
+	cut := subs.FFmpegCutter(fakeExec("3.408000\n", nil, &calls), "f.mkv", t.TempDir())
+	for _, start := range []time.Duration{time.Second, 10 * time.Second} {
+		if _, err := cut(t.Context(), subs.Span{Start: start, End: start + 5*time.Second}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var cuts [][]string
+	for _, c := range calls {
+		if c.name == "ffmpeg" {
+			cuts = append(cuts, c.args)
+		}
+	}
+	if len(cuts) != 2 || slices.Index(cuts[0], "-ss") < slices.Index(cuts[0], "-i") {
+		t.Errorf("early span must seek after -i: %v", cuts)
+	}
+	if slices.Index(cuts[1], "-ss") > slices.Index(cuts[1], "-i") {
+		t.Errorf("later span must seek before -i: %v", cuts[1])
+	}
+}
+
+// The real ffmpeg must accept the cut of a matroska file.
+func TestFFmpegCutter_Matroska(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	file := filepath.Join(t.TempDir(), "a.mkv")
+	out, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error",
+		"-itsoffset", "3", "-f", "lavfi", "-i", "color=c=red:s=64x64:r=10:d=8",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=10",
+		"-map", "0:v", "-map", "1:a", "-pix_fmt", "yuv420p", file).CombinedOutput()
+	if err != nil {
+		t.Fatalf("ffmpeg: %v\n%s", err, out)
+	}
+	ex := subs.Exec(scenes.NewExec())
+	cut := subs.FFmpegCutter(ex, file, t.TempDir())
+	for _, start := range []time.Duration{0, time.Second, 2 * time.Second, 4 * time.Second} {
+		wav, err := cut(t.Context(), subs.Span{Start: start, End: start + 5*time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := subs.Duration(t.Context(), ex, wav)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := got - 5*time.Second; d < -50*time.Millisecond || d > 50*time.Millisecond {
+			t.Errorf("cut from %v lasts %v, want 5s", start, got)
+		}
 	}
 }
 

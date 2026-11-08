@@ -115,3 +115,20 @@ func TestStageNoScenes(t *testing.T) {
 		t.Error("no error for a film with no scenes")
 	}
 }
+
+func TestStageSkipMessagesNameWhatIsMissing(t *testing.T) {
+	for lang, want := range map[string]string{
+		"auto": "has no bitmap subtitle track to OCR",
+		"fra":  `has no readable "fra" subtitle track`,
+	} {
+		ex := ffExec("", 0)
+		if lang == "auto" {
+			ex = func(context.Context, string, ...string) ([]byte, error) { return nil, nil } // no tracks
+		}
+		s := newStage(ex, &memStore{scenes: []core.Scene{{ID: 1, End: sec(10)}}}, &bandReader{})
+		err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv", "lang": lang}), noProgress)
+		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), `"auto"`) {
+			t.Errorf("lang %s: err = %v, want %q", lang, err, want)
+		}
+	}
+}

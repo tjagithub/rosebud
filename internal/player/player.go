@@ -39,12 +39,15 @@ func Frames(ctx context.Context, r io.Reader, w, h int, fps float64, from time.D
 	out := make(chan Frame)
 	go func() {
 		defer close(out)
-		start := now()
+		var start time.Duration
 		step := time.Duration(float64(time.Second) / fps)
 		for i := 0; ; i++ {
 			buf := make([]byte, w*h*3)
 			if _, err := io.ReadFull(r, buf); err != nil {
 				return
+			}
+			if i == 0 {
+				start = now()
 			}
 			due := start + time.Duration(i)*step
 			if wait := due - now(); wait > 0 {

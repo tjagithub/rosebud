@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"cmp"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -30,7 +31,7 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 	if cfg.lib == nil {
 		return &Model{help: help.New(), stack: []Screen{newSearch(src, limit, cfg)}}
 	}
-	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cfg.bundle) })}}
+	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cmp.Or(f.Bundle, cfg.bundle)) })}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.

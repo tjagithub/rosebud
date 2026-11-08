@@ -19,6 +19,14 @@ type Film struct {
 	Year     int
 	Bundle   string
 	Duration time.Duration
+	FPS      float64   // frames per second of the video; 0 if unknown
+	Chapters []Chapter // in time order; may be empty
+}
+
+// Chapter is a named point in a film.
+type Chapter struct {
+	Start time.Duration
+	Title string
 }
 
 // Scene is a cut. Frame is a bundle-relative path; pixels never cross Client.

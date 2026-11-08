@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// defaultFPS counts the frame part of a timecode until films record their own rate.
+// defaultFPS counts the frame part of a timecode when a film has no recorded rate.
 const defaultFPS = 24
 
 // timecode is the overlay for going to a time as HH:MM:SS:FF. Tab moves

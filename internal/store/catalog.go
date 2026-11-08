@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -39,6 +40,19 @@ func (s *Store) PutFilm(ctx context.Context, f core.Film) error {
 			title = excluded.title, year = excluded.year,
 			bundle = excluded.bundle, duration_ns = excluded.duration_ns`,
 		f.ID, f.Title, f.Year, f.Bundle, int64(f.Duration))
+	return err
+}
+
+// SetMedia records the frame rate and chapters of a film.
+func (s *Store) SetMedia(ctx context.Context, id core.FilmID, fps float64, chapters []core.Chapter) error {
+	if chapters == nil {
+		chapters = []core.Chapter{}
+	}
+	js, err := json.Marshal(chapters)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `update films set fps = ?, chapters = ? where id = ?`, fps, string(js), id)
 	return err
 }
 
@@ -159,10 +173,17 @@ func (s *Store) Texts(ctx context.Context, film core.FilmID) iter.Seq2[SceneLine
 func (s *Store) Films(ctx context.Context) iter.Seq2[core.Film, error] {
 	return query(ctx, s.db, func(r *sql.Rows) (f core.Film, err error) {
 		var dur int64
-		err = r.Scan(&f.ID, &f.Title, &f.Year, &f.Bundle, &dur)
+		var chapters string
+		err = r.Scan(&f.ID, &f.Title, &f.Year, &f.Bundle, &dur, &f.FPS, &chapters)
 		f.Duration = time.Duration(dur)
+		if err == nil {
+			err = json.Unmarshal([]byte(chapters), &f.Chapters)
+		}
+		if len(f.Chapters) == 0 {
+			f.Chapters = nil
+		}
 		return f, err
-	}, `select id, title, year, bundle, duration_ns from films order by title, id`)
+	}, `select id, title, year, bundle, duration_ns, fps, chapters from films order by title, id`)
 }
 
 // Scenes lists a film's scenes in time order.

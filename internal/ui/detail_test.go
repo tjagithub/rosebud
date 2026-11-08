@@ -209,3 +209,26 @@ func TestTimecodeDigitsFillPartsInOrder(t *testing.T) {
 	tui.Press("enter")
 	tui.Screen().Contains("scene 12")
 }
+
+func filmWithMedia(t *testing.T) *uitest.TUI {
+	f := &fakeSearch{hits: manyHits(20)}
+	lib := fakeLib{films: []core.Film{{
+		ID: "a", Title: "Sonatine", FPS: 25,
+		Chapters: []core.Chapter{{Start: 0, Title: "Opening"}, {Start: 10 * time.Second, Title: "Beach"}},
+	}}}
+	tui := uitest.New(t, ui.New(f, 10, ui.WithLibrary(lib)))
+	tui.Press("enter")
+	return tui
+}
+
+func TestTimecodeUsesTheFilmsFrameRate(t *testing.T) {
+	tui := filmWithMedia(t)
+	tui.Type("t")
+	tui.Screen().Contains("at 25 fps")
+}
+
+func TestPickerShowsChapterNames(t *testing.T) {
+	tui := filmWithMedia(t)
+	tui.Type("s")
+	tui.Screen().Contains("Opening", "Beach")
+}

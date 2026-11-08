@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -20,6 +21,7 @@ const detailID = 8 // kitty image slot of the detail screen
 // detailScreen shows one scene: a large frame, its time, and the original
 // text beside its translation.
 type detailScreen struct {
+	film   core.Film // what is known of the film: frame rate and chapters
 	hits   []core.Hit
 	i      int
 	fr     pane
@@ -30,6 +32,26 @@ type detailScreen struct {
 	err    error
 	loadID int
 	w, h   int
+}
+
+// fps is the frame rate for timecodes: the film's, rounded, else defaultFPS.
+func (d *detailScreen) fps() int {
+	if d.film.FPS >= 1 {
+		return int(d.film.FPS + 0.5)
+	}
+	return defaultFPS
+}
+
+// chapter is the title of the chapter playing at t, or "–".
+func (d *detailScreen) chapter(t time.Duration) string {
+	name := "–"
+	for _, c := range d.film.Chapters {
+		if c.Start > t {
+			break
+		}
+		name = cmp.Or(c.Title, "–")
+	}
+	return name
 }
 
 func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
@@ -130,7 +152,7 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		case "s":
 			return d, Open(newPicker(d))
 		case "t":
-			return d, Open(newTimecode(d, defaultFPS))
+			return d, Open(newTimecode(d, d.fps()))
 		case "/":
 			cmd := d.f.open()
 			d.relayout(false)
@@ -279,6 +301,7 @@ func newFilmScreen(src Searcher, film core.Film, bundle string) *detailScreen {
 		bundle = film.Bundle
 	}
 	d := newDetail(nil, 0, bundle)
+	d.film = film
 	id := int(nextLoad.Add(1))
 	d.loadID = id
 	d.load = func() tea.Cmd {

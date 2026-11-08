@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/tjagithub/rosebud/internal/core"
@@ -16,6 +17,11 @@ import (
 // Sink receives the finished scenes for a film.
 type Sink interface {
 	ReplaceScenes(ctx context.Context, film core.FilmID, scenes []store.SceneText) error
+}
+
+// MediaSink is a Sink that also keeps what ffprobe says about the video.
+type MediaSink interface {
+	SetMedia(ctx context.Context, film core.FilmID, fps float64, chapters []core.Chapter) error
 }
 
 // Stage finds the cuts in a film and extracts one frame per scene.
@@ -71,8 +77,25 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	if err := s.Sink.ReplaceScenes(ctx, spec.Film, rows); err != nil {
 		return err
 	}
+	s.recordMedia(ctx, spec.Film, file)
 	prune(filepath.Join(film.Bundle, "frames"), rows)
 	return nil
+}
+
+// recordMedia stores the frame rate and chapters. Without them the interface
+// falls back to defaults, so a failure here does not fail the stage.
+func (s Stage) recordMedia(ctx context.Context, film core.FilmID, file string) {
+	ms, ok := s.Sink.(MediaSink)
+	if !ok {
+		return
+	}
+	out, err := s.Exec(ctx, "ffprobe", append(slices.Clone(probeMedia), file)...)
+	if err != nil {
+		return
+	}
+	if fps, chapters, err := ParseMedia(out); err == nil {
+		_ = ms.SetMedia(ctx, film, fps, chapters)
+	}
 }
 
 // prune deletes frames no scene refers to, left over from earlier runs.

@@ -8,7 +8,7 @@ import (
 )
 
 // migrations[i] upgrades user_version i to i+1. Append only; never edit.
-var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3, toV4}
+var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3, toV4, toV5}
 
 func toV1(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
@@ -84,6 +84,14 @@ func toV3(ctx context.Context, tx *sql.Tx) error {
 // rows have none, so their norm is already right.
 func toV4(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `alter table scenes add column translation text not null default ''`)
+	return err
+}
+
+// toV5 adds the frame rate and chapters (a JSON list) that ffprobe reports.
+func toV5(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+alter table films add column fps real not null default 0;
+alter table films add column chapters text not null default '[]'`)
 	return err
 }
 

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -70,8 +71,8 @@ func TestNew(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 4 {
-		t.Errorf("user_version = %d, %v; want 4", v, err)
+	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 5 {
+		t.Errorf("user_version = %d, %v; want 5", v, err)
 	}
 }
 
@@ -84,7 +85,7 @@ func TestStore_Films(t *testing.T) {
 	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
 		t.Fatalf("films = %+v, want kane then zulu", got)
 	}
-	if want := (core.Film{ID: "a", Title: "Citizen Kane", Year: 1941, Bundle: "/films/kane", Duration: time.Hour}); got[0] != want {
+	if want := (core.Film{ID: "a", Title: "Citizen Kane", Year: 1941, Bundle: "/films/kane", Duration: time.Hour}); !reflect.DeepEqual(got[0], want) {
 		t.Errorf("film = %+v, want %+v", got[0], want)
 	}
 
@@ -460,5 +461,19 @@ func TestStore_ReplaceScenesKeepsTranslation(t *testing.T) {
 	}
 	if hitCount(t, s, "hello") != 1 {
 		t.Error("rescan dropped the translation of an unchanged scene")
+	}
+}
+
+func TestStore_Media(t *testing.T) {
+	s := newStore(t)
+	put(t, s, core.Film{ID: "a", Title: "A", Bundle: "/a"})
+	ch := []core.Chapter{{Start: 0, Title: "One"}, {Start: 90 * time.Second, Title: "Two"}}
+	if err := s.SetMedia(context.Background(), "a", 23.976, ch); err != nil {
+		t.Fatal(err)
+	}
+	for f, err := range s.Films(context.Background()) {
+		if err != nil || f.FPS != 23.976 || len(f.Chapters) != 2 || f.Chapters[1] != ch[1] {
+			t.Errorf("film = %+v, %v", f, err)
+		}
 	}
 }

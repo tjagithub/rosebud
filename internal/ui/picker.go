@@ -31,16 +31,15 @@ func newPicker(d *detailScreen) *picker {
 	var rows []table.Row
 	for _, i := range p.idx {
 		s := d.hits[i].Scene
-		// Chapters are not stored yet.
-		rows = append(rows, table.Row{strconv.Itoa(int(s.ID)), "–", Clock(s.Start), fmt.Sprintf("%.0fs", (s.End - s.Start).Seconds())})
+		rows = append(rows, table.Row{strconv.Itoa(int(s.ID)), truncate(d.chapter(s.Start), 15), Clock(s.Start), fmt.Sprintf("%.0fs", (s.End - s.Start).Seconds())})
 	}
 	st := table.DefaultStyles()
 	st.Selected = selected
 	st.Cell = lipgloss.NewStyle().Padding(0, 1)
 	st.Header = lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	p.tbl = table.New(
-		table.WithColumns([]table.Column{{Title: "scene", Width: 7}, {Title: "chapter", Width: 9}, {Title: "time", Width: 9}, {Title: "length", Width: 7}}),
-		table.WithRows(rows), table.WithStyles(st), table.WithFocused(true), table.WithWidth(44), table.WithHeight(12),
+		table.WithColumns([]table.Column{{Title: "scene", Width: 7}, {Title: "chapter", Width: 15}, {Title: "time", Width: 9}, {Title: "length", Width: 7}}),
+		table.WithRows(rows), table.WithStyles(st), table.WithFocused(true), table.WithWidth(50), table.WithHeight(12),
 	)
 	p.tbl.SetCursor(d.pos())
 	return p

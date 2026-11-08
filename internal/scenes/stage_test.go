@@ -19,6 +19,7 @@ import (
 // fakeExec answers ffprobe and ffmpeg, writing the frame file for extractions.
 type fakeExec struct {
 	duration string
+	media    string
 	cuts     string
 	fail     map[string]error
 	onFrame  func(n int)
@@ -35,6 +36,8 @@ func (f *fakeExec) run(_ context.Context, name string, args ...string) ([]byte, 
 		return nil, err
 	}
 	switch {
+	case name == "ffprobe" && slices.Contains(args, "-show_chapters"):
+		return []byte(f.media), nil
 	case name == "ffprobe":
 		return []byte(f.duration), nil
 	case slices.Contains(args, "-frames:v"):
@@ -312,5 +315,29 @@ func TestStage_HWDevice(t *testing.T) {
 		if (i >= 0) != c.want || (c.want && detect[i+1] != c.dev) {
 			t.Errorf("%+v: args %q", c, detect)
 		}
+	}
+}
+
+type mediaSink struct {
+	fakeSink
+	fps      float64
+	chapters []core.Chapter
+}
+
+func (m *mediaSink) SetMedia(_ context.Context, _ core.FilmID, fps float64, ch []core.Chapter) error {
+	m.fps, m.chapters = fps, ch
+	return nil
+}
+
+func TestStage_RecordsFrameRateAndChapters(t *testing.T) {
+	media := `{"streams":[{"avg_frame_rate":"25/1"}],"chapters":[{"start_time":"5.0","tags":{"title":"Act"}}]}`
+	fe, sink := &fakeExec{duration: "100", media: media, cuts: cutsOut}, &mediaSink{}
+	stage, spec, _ := newStage(t, fe, &sink.fakeSink)
+	stage.Sink = sink
+	if err := stage.Run(context.Background(), spec, func(int64, int64) {}); err != nil {
+		t.Fatal(err)
+	}
+	if sink.fps != 25 || len(sink.chapters) != 1 || sink.chapters[0].Title != "Act" {
+		t.Errorf("fps %v chapters %+v", sink.fps, sink.chapters)
 	}
 }

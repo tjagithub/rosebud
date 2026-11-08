@@ -6,6 +6,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +16,15 @@ import (
 	"github.com/tjagithub/rosebud/internal/player"
 )
 
+// playFPS is the picture rate; ROSE_PLAY_FPS overrides it for trying rates.
+var playFPS = func() float64 {
+	if v, err := strconv.ParseFloat(os.Getenv("ROSE_PLAY_FPS"), 64); err == nil && v >= 1 && v <= 120 {
+		return v
+	}
+	return 24
+}()
+
 const (
-	playFPS     = 24
 	playLead    = 24 // frames encoded ahead before playing, and while
 	playWorkers = 4
 )
@@ -233,7 +241,7 @@ func (d *detailScreen) onPlayFrame(msg playFrameMsg) tea.Cmd {
 	if msg.Data == "" && msg.Cols == 0 && msg.At == 0 {
 		return d.stopPlay()
 	}
-	traceFrame("view", int(msg.At/(time.Second/playFPS)), 0, 0)
+	traceFrame("view", int(msg.At.Seconds()*playFPS), 0, 0)
 	p.at = msg.At
 	d.fr.shown, d.fr.cols, d.fr.rows = "play", msg.Cols, msg.Rows
 	return tea.Batch(tea.Raw(msg.Data), d.next(p))

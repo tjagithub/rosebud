@@ -27,7 +27,7 @@ func VideoArgs(file string, from time.Duration, w, h int, fps float64) []string 
 
 // AudioArgs are ffplay's arguments to play the sound from the given film time.
 func AudioArgs(file string, from time.Duration) []string {
-	return []string{"-nostdin", "-nodisp", "-vn", "-autoexit", "-loglevel", "error", "-ss", secs(from), file}
+	return []string{"-nodisp", "-vn", "-autoexit", "-loglevel", "error", "-ss", secs(from), file}
 }
 
 func secs(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f', -1, 64) }

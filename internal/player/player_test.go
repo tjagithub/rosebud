@@ -111,7 +111,7 @@ func TestArgs(t *testing.T) {
 		t.Errorf("video args %v: want -ss before -i and output to stdout", v)
 	}
 	a := player.AudioArgs("f.mkv", 90*time.Second)
-	for _, seq := range [][]string{{"-ss", "90"}, {"-nodisp"}, {"-vn"}, {"-autoexit"}, {"-nostdin"}} {
+	for _, seq := range [][]string{{"-ss", "90"}, {"-nodisp"}, {"-vn"}, {"-autoexit"}} {
 		if !contains(a, seq) {
 			t.Errorf("audio args %v lack %v", a, seq)
 		}

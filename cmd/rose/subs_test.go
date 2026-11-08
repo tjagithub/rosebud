@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tjagithub/rosebud/internal/core"
+	"github.com/tjagithub/rosebud/internal/langid"
 	"github.com/tjagithub/rosebud/internal/store"
 	"github.com/tjagithub/rosebud/internal/subs"
 )
@@ -131,5 +132,40 @@ func TestRun_SubsErrors(t *testing.T) {
 	}
 	if _, err := os.Stat(strings.TrimSuffix(file, ".mkv") + ".film"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a failed subs run created a bundle: %v", err)
+	}
+}
+
+func TestRun_SubsListensForTheLanguage(t *testing.T) {
+	for name, tc := range map[string]struct {
+		det       langid.Detector
+		wantModel string
+	}{
+		"sure": {fixedLang{"ja": 0.95, "en": 0.05}, "mlx-community/parakeet-tdt_ctc-0.6b-ja"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			old := subsDetector
+			subsDetector = func(string) langid.Detector { return tc.det }
+			t.Cleanup(func() { subsDetector = old })
+			file := makeTalkie(t)
+			var out bytes.Buffer
+			if err := run(t.Context(), []string{"scenes", file}, &out, &out); err != nil {
+				t.Fatal(err)
+			}
+			var model string
+			err := runSubs(t.Context(), []string{file}, &out, &out, fakeTr(&model))
+			if err != nil || model != tc.wantModel {
+				t.Fatalf("model %q, err %v, want %q", model, err, tc.wantModel)
+			}
+		})
+	}
+}
+
+func TestSureEnough(t *testing.T) {
+	if err := sureEnough(langid.Result{Language: "ja", Score: 0.88, Windows: 13}); err != nil {
+		t.Errorf("a clear film: %v", err)
+	}
+	err := sureEnough(langid.Result{Language: "ja", Score: 0.18, Windows: 38})
+	if err == nil || !strings.Contains(err.Error(), "pass --lang") {
+		t.Errorf("a mixed film: err = %v", err)
 	}
 }

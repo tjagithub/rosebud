@@ -28,7 +28,7 @@ func runSubs(ctx context.Context, args []string, stdout, stderr io.Writer, newTr
 func subsCmd(newTr func(model string) subs.Transcriber) *cobra.Command {
 	fs := flag.NewFlagSet("subs", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
-	lang := fs.String("lang", "en", "spoken language code, such as en or ja")
+	lang := fs.String("lang", "auto", "spoken language code, such as en or ja; auto listens to the film")
 	model := fs.String("model", "", "speech model, overriding the one chosen for -lang")
 	maxChunk := fs.Duration("max-chunk", time.Minute, "longest stretch of audio sent to the model at once")
 	retries := fs.Int("retries", 2, "extra tries for a stretch that comes back empty")
@@ -42,8 +42,8 @@ func subsCmd(newTr func(model string) subs.Transcriber) *cobra.Command {
 		if _, err := os.Stat(file); err != nil {
 			return err
 		}
-		if *model == "" {
-			if *model, err = subs.ModelFor(*lang); err != nil {
+		if *lang != "auto" && *model == "" {
+			if _, err := subs.ModelFor(*lang); err != nil {
 				return err
 			}
 		}
@@ -56,6 +56,17 @@ func subsCmd(newTr func(model string) subs.Transcriber) *cobra.Command {
 		dbPath := filepath.Join(bundle, "rose.db")
 		if _, err := os.Stat(dbPath); err != nil {
 			return fmt.Errorf("no scenes for %s yet: run `rose scenes` first", file)
+		}
+		if *model == "" {
+			spoken := *lang
+			if spoken == "auto" {
+				if spoken, err = autoLanguage(ctx, file, stderr); err != nil {
+					return err
+				}
+			}
+			if *model, err = subs.ModelFor(spoken); err != nil {
+				return err
+			}
 		}
 		unlock, err := lock.Acquire(bundle)
 		if err != nil {

@@ -40,36 +40,11 @@ func langCmd(newDet func(model string) langid.Detector) *cobra.Command {
 		if windows <= 0 || win <= 0 {
 			return fmt.Errorf("usage: %s", c.UseLine())
 		}
-		dir, err := os.MkdirTemp("", "rose-lang-")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = os.RemoveAll(dir) }()
-		ex := subs.Exec(scenes.NewExec())
-		total, err := subs.Duration(ctx, ex, file)
-		if err != nil {
-			return err
-		}
-		cutter := subs.FFmpegCutter(ex, file, dir)
-		cut := func(ctx context.Context, at time.Duration) (string, error) {
-			wav, err := cutter(ctx, subs.Span{Start: at, End: min(at+win, total)})
-			if err != nil {
-				return "", err
-			}
-			rms, err := langid.RMS(wav)
-			if verbose {
-				_, _ = fmt.Fprintf(c.ErrOrStderr(), "%8v rms %.4f %s\n", at.Round(time.Second), rms, filepath.Base(wav))
-			}
-			if err != nil || rms < minLoud {
-				return "", fmt.Errorf("window at %v is silent", at)
-			}
-			return wav, nil
-		}
-		det := newDet(model)
+		var trace io.Writer
 		if verbose {
-			det = tracing{det, c.ErrOrStderr()}
+			trace = c.ErrOrStderr()
 		}
-		r, err := langid.Detect(ctx, det, cut, langid.Spread(total, windows, win), minTop)
+		r, err := detectLanguage(ctx, newDet(model), file, windows, win, minTop, trace)
 		if err != nil {
 			return err
 		}
@@ -109,4 +84,65 @@ func (t tracing) Windows(ctx context.Context, wavs []string) ([]langid.Probs, er
 		_, _ = fmt.Fprintln(t.w, line)
 	}
 	return out, err
+}
+
+// detectLanguage listens to windows stretches of file and names the language.
+// A non-nil trace gets each window's loudness and the model's top guesses.
+func detectLanguage(ctx context.Context, det langid.Detector, file string, windows int, win time.Duration, minTop float64, trace io.Writer) (langid.Result, error) {
+	dir, err := os.MkdirTemp("", "rose-lang-")
+	if err != nil {
+		return langid.Result{}, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	ex := subs.Exec(scenes.NewExec())
+	total, err := subs.Duration(ctx, ex, file)
+	if err != nil {
+		return langid.Result{}, err
+	}
+	cutter := subs.FFmpegCutter(ex, file, dir)
+	cut := func(ctx context.Context, at time.Duration) (string, error) {
+		wav, err := cutter(ctx, subs.Span{Start: at, End: min(at+win, total)})
+		if err != nil {
+			return "", err
+		}
+		rms, err := langid.RMS(wav)
+		if trace != nil {
+			_, _ = fmt.Fprintf(trace, "%8v rms %.4f %s\n", at.Round(time.Second), rms, filepath.Base(wav))
+		}
+		if err != nil || rms < minLoud {
+			return "", fmt.Errorf("window at %v is silent", at)
+		}
+		return wav, nil
+	}
+	if trace != nil {
+		det = tracing{det, trace}
+	}
+	return langid.Detect(ctx, det, cut, langid.Spread(total, windows, win), minTop)
+}
+
+// subsDetector builds the language detector that `subs --lang auto` uses.
+var subsDetector = whisperLang
+
+// minAutoScore is how sure auto detection must be to pick a language alone.
+const minAutoScore = 0.6
+
+// autoLanguage listens to file and returns its language, or says to pass --lang.
+func autoLanguage(ctx context.Context, file string, w io.Writer) (string, error) {
+	r, err := detectLanguage(ctx, subsDetector("openai/whisper-tiny"), file, 48, 10*time.Second, 0.7, nil)
+	if err != nil {
+		return "", fmt.Errorf("could not tell the spoken language (%w): pass --lang", err)
+	}
+	if err := sureEnough(r); err != nil {
+		return "", err
+	}
+	_, _ = fmt.Fprintf(w, "language: %s (score %.2f, %d windows)\n", r.Language, r.Score, r.Windows)
+	return r.Language, nil
+}
+
+// sureEnough fails for a result too weak to act on alone.
+func sureEnough(r langid.Result) error {
+	if r.Score < minAutoScore {
+		return fmt.Errorf("the audio is mixed or unclear (best guess %s, score %.2f): pass --lang", r.Language, r.Score)
+	}
+	return nil
 }

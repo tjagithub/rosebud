@@ -17,10 +17,11 @@ type Frame struct {
 }
 
 // VideoArgs are ffmpeg's arguments to write raw RGB frames at fps, scaled to
-// w by h, from the given film time to stdout.
+// w by h with bars if the picture is another shape, from the given film time to stdout.
 func VideoArgs(file string, from time.Duration, w, h int, fps float64) []string {
 	return []string{"-nostdin", "-v", "error", "-ss", secs(from), "-i", file, "-an",
-		"-vf", fmt.Sprintf("fps=%s,scale=%d:%d", strconv.FormatFloat(fps, 'f', -1, 64), w, h),
+		"-vf", fmt.Sprintf("fps=%s,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
+			strconv.FormatFloat(fps, 'f', -1, 64), w, h, w, h),
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-"}
 }
 

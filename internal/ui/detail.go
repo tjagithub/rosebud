@@ -31,6 +31,9 @@ type detailScreen struct {
 	load   func() tea.Cmd // fetches the hits, for a screen opened before they are known
 	err    error
 	loadID int
+	start  startFunc // starts playback; replaced in tests
+	play   *playState
+	seq    int
 	w, h   int
 }
 
@@ -55,7 +58,7 @@ func (d *detailScreen) chapter(t time.Duration) string {
 }
 
 func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
-	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}, f: newFilter(), th: newStrip(bundle), tb: newTextBoxes()}
+	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}, f: newFilter(), th: newStrip(bundle), tb: newTextBoxes(), start: startPlayer}
 }
 
 // hit is the scene on show, or the zero Hit while there are none.
@@ -88,13 +91,14 @@ var (
 var (
 	filterKey = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	pickKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "scenes"))
+	playKey   = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "play"))
 	timeKey   = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "time"))
 	focusKey  = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus box"))
 	scrollKey = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scroll"))
 )
 
 func (d *detailScreen) ShortHelp() []key.Binding {
-	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, timeKey, filterKey, backKey}
+	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, playKey, timeKey, filterKey, backKey}
 }
 func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
@@ -108,6 +112,8 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return d, d.reload()
 	case FrameMsg:
 		return d, tea.Batch(d.fr.onFrame(msg), d.th.onFrame(msg))
+	case playFrameMsg:
+		return d, d.onPlayFrame(msg)
 	case jumpMsg:
 		if msg.To != d || msg.I >= len(d.hits) {
 			return d, nil
@@ -138,6 +144,16 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			d.relayout(wasActive)
 			return d, cmd
 		}
+		if d.play != nil {
+			switch msg.String() {
+			case "esc", "p", "space":
+				return d, d.stopPlay()
+			case "left", "right":
+				cmd := d.stopPlay()
+				return d, tea.Batch(cmd, d.step(map[string]int{"left": -1, "right": 1}[msg.String()]))
+			}
+			return d, nil
+		}
 		if scrolls(msg.String()) {
 			return d, d.tb.scroll(msg)
 		}
@@ -149,6 +165,8 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return d, d.step(-1)
 		case "right":
 			return d, d.step(1)
+		case "p":
+			return d, d.startPlay()
 		case "s":
 			return d, Open(newPicker(d))
 		case "t":
@@ -172,7 +190,7 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 // Capturing is true while the filter bar takes keys, so esc closes it, not the screen.
-func (d *detailScreen) Capturing() bool { return d.f.editing || d.f.active() }
+func (d *detailScreen) Capturing() bool { return d.f.editing || d.f.active() || d.play != nil }
 
 // visible are the indexes of the hits the filter lets through.
 func (d *detailScreen) visible() []int {

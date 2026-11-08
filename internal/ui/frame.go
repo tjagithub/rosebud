@@ -111,19 +111,8 @@ func loadFrame(ctx context.Context, path string, id int, box size, px int) (stri
 			done <- result{}
 			return
 		}
-		img = shrink(img, cmp.Or(px, maxPixels))
-		b := img.Bounds()
-		cols, rows := fit(b.Dx(), b.Dy(), box)
-		var buf bytes.Buffer
-		err = kitty.EncodeGraphics(&buf, img, &kitty.Options{
-			Action: kitty.TransmitAndPut, ID: id, Format: kitty.PNG, Transmission: kitty.Direct,
-			VirtualPlacement: true, Columns: cols, Rows: rows, Quite: 2, Chunk: true,
-		})
-		if err != nil {
-			done <- result{}
-			return
-		}
-		done <- result{buf.String(), cols, rows}
+		data, cols, rows := encodeImage(img, id, box, px)
+		done <- result{data, cols, rows}
 	}()
 	select {
 	case r := <-done:
@@ -131,6 +120,23 @@ func loadFrame(ctx context.Context, path string, id int, box size, px int) (stri
 	case <-ctx.Done():
 		return "", 0, 0
 	}
+}
+
+// encodeImage shrinks img and returns its kitty upload and the cells it covers.
+// Any failure returns "".
+func encodeImage(img image.Image, id int, box size, px int) (string, int, int) {
+	img = shrink(img, cmp.Or(px, maxPixels))
+	b := img.Bounds()
+	cols, rows := fit(b.Dx(), b.Dy(), box)
+	var buf bytes.Buffer
+	err := kitty.EncodeGraphics(&buf, img, &kitty.Options{
+		Action: kitty.TransmitAndPut, ID: id, Format: kitty.PNG, Transmission: kitty.Direct,
+		VirtualPlacement: true, Columns: cols, Rows: rows, Quite: 2, Chunk: true,
+	})
+	if err != nil {
+		return "", 0, 0
+	}
+	return buf.String(), cols, rows
 }
 
 // fit is the largest size within box that keeps the proportions of a w by h

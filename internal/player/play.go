@@ -71,6 +71,9 @@ func Play(ctx context.Context, s Spec) (*Playback, error) {
 	return p, nil
 }
 
+// Out is the channel of frames, for callers that hold a Playback by interface.
+func (p *Playback) Out() <-chan Frame { return p.Frames }
+
 // Stop ends the video and the sound. It is safe to call more than once.
 func (p *Playback) Stop() { p.stop() }
 

@@ -102,7 +102,7 @@ func TestFrames_PartialLastFrameIsDropped(t *testing.T) {
 
 func TestArgs(t *testing.T) {
 	v := player.VideoArgs("f.mkv", 90*time.Second+500*time.Millisecond, 160, 90, 12)
-	for _, seq := range [][]string{{"-ss", "90.5"}, {"-i", "f.mkv"}, {"-an"}, {"-f", "rawvideo"}, {"-pix_fmt", "rgb24"}, {"-vf", "fps=12,scale=160:90"}} {
+	for _, seq := range [][]string{{"-ss", "90.5"}, {"-i", "f.mkv"}, {"-an"}, {"-f", "rawvideo"}, {"-pix_fmt", "rgb24"}, {"-vf", "fps=12,scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2"}} {
 		if !contains(v, seq) {
 			t.Errorf("video args %v lack %v", v, seq)
 		}

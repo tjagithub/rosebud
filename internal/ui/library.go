@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"io"
 	"iter"
 	"time"
@@ -44,10 +45,10 @@ type filmItem struct {
 
 func (f filmItem) FilterValue() string { return f.Title }
 
-type libraryKeys struct{ open, search, filter, quit key.Binding }
+type libraryKeys struct{ open, search, filter, quit, focus key.Binding }
 
 func (k libraryKeys) ShortHelp() []key.Binding {
-	return []key.Binding{k.open, k.search, k.filter, k.quit}
+	return []key.Binding{k.open, k.focus, k.search, k.filter, k.quit}
 }
 func (k libraryKeys) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
@@ -59,6 +60,9 @@ type libraryScreen struct {
 	list   list.Model
 	keys   libraryKeys
 	err    error
+	menu   menu
+	inMenu bool // the menu has focus, not the films
+	w, h   int
 }
 
 func newLibrary(lib Library, search func() Screen, open func(core.Film) Screen) *libraryScreen {
@@ -67,13 +71,26 @@ func newLibrary(lib Library, search func() Screen, open func(core.Film) Screen) 
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
-	return &libraryScreen{lib: lib, search: search, open: open, list: l, keys: libraryKeys{
+	scr := &libraryScreen{lib: lib, search: search, open: open, list: l, keys: libraryKeys{
+		focus:  key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "menu/films")),
 		open:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open film")),
 		search: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "search all")),
 		filter: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter films")),
 		quit:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
 	}}
+	scr.menu = menu{items: []menuItem{
+		{"films", func() tea.Cmd { scr.inMenu = false; return nil }},
+		{"search all", func() tea.Cmd { return Push(scr.search()) }},
+		{"add media", func() tea.Cmd {
+			return Open(notice{"add media", "Adding media from here is coming.\nFor now run: rose build FILE"})
+		}},
+		{"quit", func() tea.Cmd { return tea.Quit }},
+	}}
+	return scr
 }
+
+// menuWidth is the outer width of the menu box.
+const menuWidth = 22
 
 func (l *libraryScreen) ShortHelp() []key.Binding  { return l.keys.ShortHelp() }
 func (l *libraryScreen) FullHelp() [][]key.Binding { return l.keys.FullHelp() }
@@ -114,7 +131,8 @@ func (l *libraryScreen) count(id core.FilmID) tea.Cmd {
 func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		l.list.SetSize(msg.Width, max(msg.Height, 1))
+		l.w, l.h = msg.Width, msg.Height
+		l.list.SetSize(max(msg.Width-menuWidth-2, 10), max(msg.Height-2, 1))
 		return l, nil
 	case filmsMsg:
 		l.err = msg.Err
@@ -134,6 +152,16 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		}
 		return l, nil
 	case tea.KeyPressMsg:
+		if l.list.FilterState() == list.Unfiltered && msg.String() == "tab" {
+			l.inMenu = !l.inMenu
+			return l, nil
+		}
+		if l.inMenu {
+			if key.Matches(msg, l.keys.search) {
+				return l, Push(l.search())
+			}
+			return l, l.menu.update(msg)
+		}
 		if l.list.FilterState() == list.Unfiltered && key.Matches(msg, l.keys.search) {
 			return l, Push(l.search())
 		}
@@ -149,16 +177,26 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 func (l *libraryScreen) View() string {
-	out := ""
+	films := ""
 	switch {
 	case l.err != nil:
-		out += "error: " + l.err.Error()
+		films = "error: " + l.err.Error()
 	case len(l.list.Items()) == 0:
-		out += dim.Render("no films yet: run `rose scenes FILE`")
+		films = dim.Render("no films yet: run `rose scenes FILE`")
 	default:
-		out += l.list.View()
+		films = l.list.View()
 	}
-	return out
+	h := max(l.h, 3)
+	box := func(focus bool, w int) lipgloss.Style {
+		s := plainBorder
+		if focus {
+			s = focusBorder
+		}
+		return s.Width(w).Height(h).MaxHeight(h)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		box(l.inMenu, menuWidth).Render(l.menu.view(l.inMenu)),
+		box(!l.inMenu, max(l.w-menuWidth, 12)).Render(films))
 }
 
 // filmRow draws a film as one line.
@@ -169,7 +207,8 @@ func (filmRow) Spacing() int                        { return 0 }
 func (filmRow) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
 func (filmRow) Render(w io.Writer, m list.Model, i int, it list.Item) {
 	f := it.(filmItem)
-	line := fmt.Sprintf("%-40s %9s  %s", f.Title, Clock(f.Duration), scenesLabel(f))
+	title := max(m.Width()-9-2-10-2, 8)
+	line := fmt.Sprintf("%-*s %9s  %s", title, truncate(f.Title, title), Clock(f.Duration), scenesLabel(f))
 	line = lipgloss.NewStyle().MaxWidth(max(m.Width(), 20)).Render(line)
 	if i == m.Index() {
 		line = selected.Render(line)
@@ -193,3 +232,6 @@ func scenesLabel(f filmItem) string {
 var _ help.KeyMap = (*libraryScreen)(nil)
 
 func (l *libraryScreen) Title() string { return "films" }
+
+// truncate cuts s to at most n cells.
+func truncate(s string, n int) string { return ansi.Truncate(s, n, "…") }

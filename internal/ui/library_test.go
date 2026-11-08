@@ -119,3 +119,26 @@ func TestLibraryEnterOpensTheFilmsScenes(t *testing.T) {
 	tui.Press("esc")
 	tui.Screen().Contains("Sonatine")
 }
+
+func TestLibraryMenuTabsFocusAndRunsItems(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}, scenes: map[core.FilmID]int{"a": 1}})
+	tui.Screen().Contains("films", "search all", "add media", "quit", "Sonatine")
+	tui.Press("tab")
+	tui.Press("down")
+	tui.Press("down")
+	tui.Press("enter")
+	tui.Screen().Contains("rose build FILE")
+	tui.Press("esc")
+	tui.Screen().Lacks("rose build FILE")
+	tui.Press("up")
+	tui.Press("enter")
+	tui.Screen().Contains("search:")
+}
+
+func TestLibraryMenuFilmsReturnsFocusToTheList(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}, scenes: map[core.FilmID]int{"a": 1}})
+	tui.Press("tab")
+	tui.Press("enter")
+	tui.Press("enter")
+	tui.Screen().Contains("scene 1")
+}

@@ -16,12 +16,14 @@ import (
 
 type fakeSearch struct {
 	queries []string
+	films   []core.FilmID
 	hits    []core.Hit
 	err     error
 }
 
 func (f *fakeSearch) Search(_ context.Context, q core.SearchQuery) ([]core.Hit, error) {
 	f.queries = append(f.queries, q.Text)
+	f.films = append(f.films, q.Film)
 	return f.hits, f.err
 }
 

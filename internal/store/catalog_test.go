@@ -141,6 +141,7 @@ func TestStore_Search(t *testing.T) {
 		{"no match is empty", core.SearchQuery{Text: "xyzzy", Limit: 10}, 0, false},
 		{"punctuation is not syntax", core.SearchQuery{Text: `rose"bud' OR (`, Limit: 10}, 0, false},
 		{"blank text", core.SearchQuery{Text: "  ", Limit: 10}, 0, true},
+		{"blank text in one film lists it", core.SearchQuery{Film: "a", Limit: 10}, 3, false},
 		{"non-positive limit", core.SearchQuery{Text: "rosebud"}, 0, true},
 	}
 	for _, tt := range tests {

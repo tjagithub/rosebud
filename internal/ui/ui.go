@@ -8,6 +8,8 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/tjagithub/rosebud/internal/core"
 )
 
 // Model is the Bubble Tea root. It owns navigation and the window size and
@@ -28,7 +30,7 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 	if cfg.lib == nil {
 		return &Model{help: help.New(), stack: []Screen{newSearch(src, limit, cfg)}}
 	}
-	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)))}}
+	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cfg.bundle) })}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.

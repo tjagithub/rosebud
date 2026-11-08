@@ -16,7 +16,7 @@ import (
 	"github.com/tjagithub/rosebud/internal/ui"
 )
 
-// runTUI opens the search screen on a bundle.
+// runTUI opens the film library on a bundle.
 func runTUI(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return execute(ctx, tuiCmd(), args, stdout, stderr)
 }
@@ -26,7 +26,7 @@ func tuiCmd() *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "tui --bundle DIR",
-		Short: "Browse a film's scenes in the terminal",
+		Short: "Browse films and their scenes in the terminal",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			ctx := c.Context()
@@ -48,12 +48,12 @@ func tuiCmd() *cobra.Command {
 			}
 			eng := engine.New(st)
 			defer func() { _ = eng.Close() }()
-			_, err = tea.NewProgram(ui.New(eng, limit, ui.WithBundle(bundle)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
+			_, err = tea.NewProgram(ui.New(eng, limit, ui.WithBundle(bundle), ui.WithLibrary(eng)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
 			return err
 		},
 	}
 	cmd.Flags().StringVar(&bundle, "bundle", "", "bundle directory to browse (a FILE.film)")
-	cmd.Flags().IntVar(&limit, "limit", 30, "most scenes to list")
+	cmd.Flags().IntVar(&limit, "limit", 30, "most hits to list in a search across films")
 	_ = cmd.MarkFlagDirname("bundle")
 	return cmd
 }

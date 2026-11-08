@@ -177,6 +177,7 @@ func (s *Store) Scenes(ctx context.Context, film core.FilmID) iter.Seq2[core.Sce
 
 // Search finds scenes whose folded text holds every word, best first. Words
 // under three characters, which the trigram index cannot see, match as substrings.
+// With a film and no text, every scene of the film comes back in time order.
 func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, error) {
 	var long, short []string
 	for _, w := range strings.Fields(Fold(q.Text)) {
@@ -186,7 +187,7 @@ func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, err
 			long = append(long, w)
 		}
 	}
-	if len(long)+len(short) == 0 {
+	if len(long)+len(short) == 0 && q.Film == "" {
 		return nil, errors.New("store: empty search text")
 	}
 	if q.Limit <= 0 {
@@ -194,7 +195,7 @@ func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.Hit, err
 	}
 
 	stmt := `select s.id, s.film, s.start_ns, s.end_ns, s.frame, s.text, s.subtitle, s.translation, `
-	order := `s.id`
+	order := `s.start_ns, s.id`
 	var args []any
 	if len(long) > 0 {
 		stmt += `-bm25(scene_fts) from scene_fts join scenes s on s.id = scene_fts.rowid where scene_fts match ?`

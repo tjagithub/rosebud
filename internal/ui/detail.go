@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -17,25 +20,43 @@ const detailID = 8 // kitty image slot of the detail screen
 // detailScreen shows one scene: a large frame, its time, and the original
 // text beside its translation.
 type detailScreen struct {
-	hits []core.Hit
-	i    int
-	fr   pane
-	f    filter
-	th   strip
-	tb   textBoxes
-	w, h int
+	hits   []core.Hit
+	i      int
+	fr     pane
+	f      filter
+	th     strip
+	tb     textBoxes
+	load   func() tea.Cmd // fetches the hits, for a screen opened before they are known
+	err    error
+	loadID int
+	w, h   int
 }
 
 func newDetail(hits []core.Hit, i int, bundle string) *detailScreen {
 	return &detailScreen{hits: hits, i: i, fr: pane{id: detailID, bundle: bundle}, f: newFilter(), th: newStrip(bundle), tb: newTextBoxes()}
 }
 
-// hit is the scene on show.
-func (d *detailScreen) hit() core.Hit { return d.hits[d.i] }
+// hit is the scene on show, or the zero Hit while there are none.
+func (d *detailScreen) hit() core.Hit {
+	if d.i < len(d.hits) {
+		return d.hits[d.i]
+	}
+	return core.Hit{}
+}
 
-func (d *detailScreen) Init() tea.Cmd { return nil }
+func (d *detailScreen) Init() tea.Cmd {
+	if d.load == nil {
+		return nil
+	}
+	return d.load()
+}
 
-func (d *detailScreen) Title() string { return fmt.Sprintf("scene %d", d.hit().Scene.ID) }
+func (d *detailScreen) Title() string {
+	if len(d.hits) == 0 {
+		return "scenes"
+	}
+	return fmt.Sprintf("scene %d", d.hit().Scene.ID)
+}
 
 var (
 	backKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
@@ -63,6 +84,12 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return d, d.reload()
 	case FrameMsg:
 		return d, tea.Batch(d.fr.onFrame(msg), d.th.onFrame(msg))
+	case scenesMsg:
+		if msg.ID != d.loadID {
+			return d, nil
+		}
+		d.hits, d.err, d.i = msg.Hits, msg.Err, 0
+		return d, d.reload()
 	case tea.MouseWheelMsg:
 		if msg.Y >= d.h-boxRows-2 {
 			return d, d.tb.scroll(msg)
@@ -195,6 +222,10 @@ func (d *detailScreen) relayout(follow bool) {
 		bar = 1
 	}
 	d.tb.resize(max(d.w, 20), bar)
+	if d.err != nil {
+		d.tb.list.SetContent("error: " + d.err.Error())
+		return
+	}
 	d.tb.show(d.hits, d.visible(), d.i, follow)
 }
 
@@ -219,4 +250,32 @@ func (d *detailScreen) step(by int) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// scenesMsg carries the hits a film screen asked for.
+type scenesMsg struct {
+	ID   int
+	Hits []core.Hit
+	Err  error
+}
+
+var nextLoad atomic.Int64
+
+// newFilmScreen is the scene screen on every scene of a film, read from src.
+func newFilmScreen(src Searcher, film core.Film, bundle string) *detailScreen {
+	if film.Bundle != "" {
+		bundle = film.Bundle
+	}
+	d := newDetail(nil, 0, bundle)
+	id := int(nextLoad.Add(1))
+	d.loadID = id
+	d.load = func() tea.Cmd {
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			hits, err := src.Search(ctx, core.SearchQuery{Film: film.ID, Limit: 100000})
+			return scenesMsg{ID: id, Hits: hits, Err: err}
+		}
+	}
+	return d
 }

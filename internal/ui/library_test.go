@@ -105,3 +105,17 @@ func TestLibrarySKeyTypesIntoTheFilterInsteadOfOpeningSearch(t *testing.T) {
 }
 
 func escKey() tea.Msg { return tea.KeyPressMsg{Code: tea.KeyEscape} }
+
+func TestLibraryEnterOpensTheFilmsScenes(t *testing.T) {
+	tui, f := library(t, fakeLib{
+		films:  []core.Film{{ID: "a", Title: "Sonatine"}},
+		scenes: map[core.FilmID]int{"a": 1},
+	})
+	tui.Press("enter")
+	tui.Screen().Contains("films › scene 1", "found it")
+	if len(f.films) != 1 || f.films[0] != "a" || f.queries[0] != "" {
+		t.Errorf("must list film a without text, got films %v queries %q", f.films, f.queries)
+	}
+	tui.Press("esc")
+	tui.Screen().Contains("Sonatine")
+}

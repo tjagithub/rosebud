@@ -56,6 +56,11 @@ func (t *textBoxes) widths() (left, right int) { return t.w / 2, t.w - t.w/2 }
 // show fills the boxes for scene cur among the hits idx lets through; a
 // changed scene scrolls the list to it and the details to the top.
 func (t *textBoxes) show(hits []core.Hit, idx []int, cur int, changed bool) {
+	if len(hits) == 0 {
+		t.list.SetContent(dim.Render("no scenes"))
+		t.details.SetContent("")
+		return
+	}
 	var rows []string
 	at := 0
 	for p, i := range idx {

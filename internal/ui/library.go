@@ -44,28 +44,32 @@ type filmItem struct {
 
 func (f filmItem) FilterValue() string { return f.Title }
 
-type libraryKeys struct{ search, filter, quit key.Binding }
+type libraryKeys struct{ open, search, filter, quit key.Binding }
 
-func (k libraryKeys) ShortHelp() []key.Binding  { return []key.Binding{k.search, k.filter, k.quit} }
+func (k libraryKeys) ShortHelp() []key.Binding {
+	return []key.Binding{k.open, k.search, k.filter, k.quit}
+}
 func (k libraryKeys) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
 // libraryScreen lists the films with how many scenes each has.
 type libraryScreen struct {
 	lib    Library
 	search func() Screen
+	open   func(core.Film) Screen
 	list   list.Model
 	keys   libraryKeys
 	err    error
 }
 
-func newLibrary(lib Library, search func() Screen) *libraryScreen {
+func newLibrary(lib Library, search func() Screen, open func(core.Film) Screen) *libraryScreen {
 	l := list.New(nil, filmRow{}, 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
-	return &libraryScreen{lib: lib, search: search, list: l, keys: libraryKeys{
-		search: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "search")),
+	return &libraryScreen{lib: lib, search: search, open: open, list: l, keys: libraryKeys{
+		open:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open film")),
+		search: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "search all")),
 		filter: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter films")),
 		quit:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
 	}}
@@ -132,6 +136,11 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if l.list.FilterState() == list.Unfiltered && key.Matches(msg, l.keys.search) {
 			return l, Push(l.search())
+		}
+		if msg.String() == "enter" && l.list.FilterState() != list.Filtering {
+			if f, ok := l.list.SelectedItem().(filmItem); ok {
+				return l, Push(l.open(f.Film))
+			}
 		}
 	}
 	var cmd tea.Cmd

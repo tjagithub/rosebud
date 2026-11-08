@@ -66,12 +66,13 @@ var (
 var (
 	filterKey = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	pickKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "scenes"))
+	timeKey   = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "time"))
 	focusKey  = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus box"))
 	scrollKey = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scroll"))
 )
 
 func (d *detailScreen) ShortHelp() []key.Binding {
-	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, filterKey, backKey}
+	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, timeKey, filterKey, backKey}
 }
 func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
@@ -128,6 +129,8 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 			return d, d.step(1)
 		case "s":
 			return d, Open(newPicker(d))
+		case "t":
+			return d, Open(newTimecode(d, defaultFPS))
 		case "/":
 			cmd := d.f.open()
 			d.relayout(false)
@@ -287,4 +290,21 @@ func newFilmScreen(src Searcher, film core.Film, bundle string) *detailScreen {
 		}
 	}
 	return d
+}
+
+// sceneAt is the hit of the scene playing at time t among the visible ones:
+// the last that starts at or before t, else the first.
+func (d *detailScreen) sceneAt(t time.Duration) int {
+	idx := d.visible()
+	if len(idx) == 0 {
+		return d.i
+	}
+	at := idx[0]
+	for _, i := range idx {
+		if d.hits[i].Scene.Start > t {
+			break
+		}
+		at = i
+	}
+	return at
 }

@@ -182,3 +182,30 @@ func TestPickerEscCancels(t *testing.T) {
 	tui.Screen().Contains("scene 1")
 	tui.Screen().Lacks("chapter")
 }
+
+func TestTGoesToATimecode(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("t")
+	tui.Screen().Contains("go to time", "00:00:01:00")
+	tui.Press("tab")
+	tui.Press("tab")
+	for range 6 {
+		tui.Press("up")
+	}
+	tui.Screen().Contains("00:00:07:00")
+	tui.Press("enter")
+	tui.Screen().Contains("scene 7")
+}
+
+func TestTimecodeDigitsFillPartsInOrder(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("t")
+	tui.Type("00" + "00" + "12")
+	tui.Screen().Contains("00:00:12:00")
+	tui.Press("enter")
+	tui.Screen().Contains("scene 12")
+}

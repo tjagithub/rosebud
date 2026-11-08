@@ -6,14 +6,27 @@ import (
 	"testing"
 )
 
-func TestReporterPlainWritesLines(t *testing.T) {
+func TestReporterPlainWritesOneLinePerTenPercent(t *testing.T) {
 	var b bytes.Buffer
 	r := newReporter(&b, false)
-	r.report("scenes", 1, 3)
-	r.report("scenes", 2, 3)
+	for n := int64(0); n <= 200; n++ {
+		r.report("subs", n, 200)
+	}
+	r.report("ocr", 1, 1)
 	r.finish()
-	if got, want := b.String(), "scenes: 1/3\nscenes: 2/3\n"; got != want {
-		t.Errorf("got %q, want %q", got, want)
+	lines := strings.Split(strings.TrimSpace(b.String()), "\n")
+	if len(lines) != 12 || lines[0] != "subs: 0/200" || lines[1] != "subs: 20/200" || lines[10] != "subs: 200/200" || lines[11] != "ocr: 1/1" {
+		t.Errorf("got %d lines: %q", len(lines), lines)
+	}
+}
+
+func TestReporterPlainStillSaysSomethingForUnknownTotals(t *testing.T) {
+	var b bytes.Buffer
+	r := newReporter(&b, false)
+	r.report("scenes", 1, 0)
+	r.report("scenes", 2, 0)
+	if got := b.String(); got != "scenes: 1/0\n" {
+		t.Errorf("got %q", got)
 	}
 }
 

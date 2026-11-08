@@ -16,6 +16,9 @@ type reporter struct {
 	live bool
 	open bool // a bar is on the line and needs a newline
 	bar  progress.Model
+
+	stage string // plain mode: the stage last written,
+	step  int64  // and the tenth of it reached
 }
 
 func newReporter(w io.Writer, live bool) *reporter {
@@ -30,6 +33,15 @@ func isTerminal(w io.Writer) bool {
 
 func (r *reporter) report(stage string, done, total int64) {
 	if !r.live {
+		// Logs and captured output get a line per tenth, not one per tick.
+		step := int64(0)
+		if total > 0 {
+			step = done * 10 / total
+		}
+		if stage == r.stage && step <= r.step && (total > 0 || done > 1) {
+			return
+		}
+		r.stage, r.step = stage, step
 		_, _ = fmt.Fprintf(r.w, "%s: %d/%d\n", stage, done, total)
 		return
 	}

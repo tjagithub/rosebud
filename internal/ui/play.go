@@ -13,7 +13,7 @@ import (
 	"github.com/tjagithub/rosebud/internal/player"
 )
 
-const playFPS = 12
+const playFPS = 24
 
 // playback is a film playing; player.Playback satisfies it.
 type playback interface {

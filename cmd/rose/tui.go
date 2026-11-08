@@ -29,13 +29,13 @@ func tuiCmd() *cobra.Command {
 			if (bundle == "") == (dir == "") || limit <= 0 {
 				return fmt.Errorf("usage: %s", c.UseLine())
 			}
-			path := bundle + dir
+			path := expandHome(bundle + dir)
 			sh, err := shelf.Open(ctx, path)
 			if err != nil {
 				return err
 			}
 			defer func() { _ = sh.Close() }()
-			_, err = tea.NewProgram(ui.New(sh, limit, ui.WithBundle(bundle), ui.WithLibrary(sh)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
+			_, err = tea.NewProgram(ui.New(sh, limit, ui.WithBundle(expandHome(bundle)), ui.WithLibrary(sh)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
 			return err
 		},
 	}

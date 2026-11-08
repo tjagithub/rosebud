@@ -1,6 +1,8 @@
 package ui_test
 
 import (
+	tea "charm.land/bubbletea/v2"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -118,5 +120,43 @@ func TestEscWhileTypingFilterStaysOnScene(t *testing.T) {
 	tui.Press("enter")
 	tui.Type("s")
 	tui.Press("esc")
+	tui.Screen().Contains("scene 1")
+}
+
+func manyHits(n int) []core.Hit {
+	var hs []core.Hit
+	for i := 1; i <= n; i++ {
+		hs = append(hs, hit(i, time.Duration(i)*time.Second, fmt.Sprintf("line%02d", i)))
+	}
+	return hs
+}
+
+func TestArrowsScrollTheFocusedBox(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Screen().Lacks("0:20")
+	for range 30 {
+		tui.Press("down")
+	}
+	tui.Screen().Contains("0:20", "scene 1")
+}
+
+func TestWheelScrollsTheBoxUnderThePointer(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
+	tui.Type("x")
+	tui.Press("enter")
+	for range 10 {
+		tui.Send(tea.MouseWheelMsg{X: 5, Y: 20, Button: tea.MouseWheelDown})
+	}
+	tui.Screen().Contains("0:20")
+}
+
+func TestClickFocusesBoxAndTabCycles(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(3)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Click(60, 20)
+	tui.Press("tab")
 	tui.Screen().Contains("scene 1")
 }

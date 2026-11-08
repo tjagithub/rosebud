@@ -24,7 +24,8 @@ func (f *fakePlayback) Stop() {
 		close(f.ch)
 	}
 }
-func (f *fakePlayback) Wait() error { return nil }
+func (f *fakePlayback) Wait() error       { return nil }
+func (f *fakePlayback) StartAudio() error { return nil }
 
 func TestSourceFileSitsBesideTheBundle(t *testing.T) {
 	dir := t.TempDir()
@@ -123,5 +124,31 @@ func TestPlayNeedsTheFilmFile(t *testing.T) {
 	d.fr.bundle = filepath.Join(t.TempDir(), "none.film")
 	if press(d, "p"); d.play != nil {
 		t.Error("no file, no playback")
+	}
+}
+
+func TestPumpDeliversEveryFrameInOrderEvenWhenFewerThanTheLead(t *testing.T) {
+	fp := &fakePlayback{ch: make(chan player.Frame)}
+	go func() {
+		for i := range 5 {
+			fp.ch <- player.Frame{At: time.Duration(i) * time.Second}
+		}
+		close(fp.ch)
+	}()
+	enc := func(f player.Frame) playFrameMsg {
+		time.Sleep(time.Duration(5-f.At.Seconds()) * time.Millisecond)
+		return playFrameMsg{At: f.At, Data: "x"}
+	}
+	var got []time.Duration
+	for m := range pump(t.Context(), fp, enc, 200, 8, 3) {
+		got = append(got, m.At)
+	}
+	for i, at := range got {
+		if at != time.Duration(i)*time.Second {
+			t.Fatalf("order %v", got)
+		}
+	}
+	if len(got) != 5 {
+		t.Errorf("got %d frames, want 5", len(got))
 	}
 }

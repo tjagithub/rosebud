@@ -66,3 +66,25 @@ func Frames(ctx context.Context, r io.Reader, w, h int, fps float64, from time.D
 	}()
 	return out
 }
+
+// Decode sends the w by h RGB frames of r as fast as they are taken, the i-th
+// marked i/fps from from. The channel closes at the end of r or of ctx.
+func Decode(ctx context.Context, r io.Reader, w, h int, fps float64, from time.Duration) <-chan Frame {
+	out := make(chan Frame)
+	go func() {
+		defer close(out)
+		step := time.Duration(float64(time.Second) / fps)
+		for i := 0; ; i++ {
+			buf := make([]byte, w*h*3)
+			if _, err := io.ReadFull(r, buf); err != nil {
+				return
+			}
+			select {
+			case out <- Frame{At: from + time.Duration(i)*step, Pix: buf}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
+}

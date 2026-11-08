@@ -45,12 +45,13 @@ func TestBuildRunsStagesInOrderWithPrefixedFlags(t *testing.T) {
 func TestBuildSkipAndStopOnFailure(t *testing.T) {
 	var log []string
 	st := []stage{fakeStage("scenes", &log, nil), fakeStage("ocr", &log, errors.New("boom")), fakeStage("translate", &log, nil)}
+	st[2].needs = []string{"ocr"}
 	err := runBuild(t, st, "--skip", "scenes", "film.mkv")
 	if err == nil || !strings.Contains(err.Error(), "ocr") || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("err = %v", err)
 	}
 	if len(log) != 1 || !strings.HasPrefix(log[0], "ocr ") {
-		t.Errorf("log = %q; want only ocr, then stop", log)
+		t.Errorf("log = %q; want only ocr, then translate blocked", log)
 	}
 }
 
@@ -85,5 +86,42 @@ func TestBuildStagesIncludeSpeechByDefault(t *testing.T) {
 	}
 	if got, want := strings.Join(names, ","), "scenes,subs,ocr,translate"; got != want {
 		t.Errorf("stages = %s, want %s", got, want)
+	}
+}
+
+func TestBuildFailureBlocksOnlyDependents(t *testing.T) {
+	var log []string
+	ocr := fakeStage("ocr", &log, errors.New("boom"))
+	ocr.needs = []string{"scenes"}
+	subs := fakeStage("subs", &log, nil)
+	subs.needs = []string{"scenes"}
+	tr := fakeStage("translate", &log, nil)
+	tr.needs = []string{"ocr"}
+	var out bytes.Buffer
+	err := execute(context.Background(), buildCmd([]stage{fakeStage("scenes", &log, nil), ocr, subs, tr}), []string{"film.mkv"}, &out, &out)
+	if err == nil || !strings.Contains(err.Error(), "ocr: boom") {
+		t.Errorf("err = %v", err)
+	}
+	if len(log) != 3 || !strings.HasPrefix(log[2], "subs ") {
+		t.Errorf("subs does not need ocr and must still run, translate must not: %q", log)
+	}
+	if !strings.Contains(out.String(), "translate: blocked: needs ocr, which failed") {
+		t.Errorf("output = %q", out.String())
+	}
+}
+
+func TestBuildPlanListsStepsAndRunsNothing(t *testing.T) {
+	var log []string
+	tr := fakeStage("translate", &log, nil)
+	tr.needs, tr.any = []string{"scenes"}, []string{"subs", "ocr"}
+	st := []stage{tr, fakeStage("subs", &log, nil), fakeStage("ocr", &log, nil), fakeStage("scenes", &log, nil)}
+	st[1].needs, st[2].needs = []string{"scenes"}, []string{"scenes"}
+	var out bytes.Buffer
+	if err := execute(context.Background(), buildCmd(st), []string{"--plan", "film.mkv"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "scenes\nsubs  needs scenes\nocr  needs scenes\ntranslate  needs scenes  needs one of subs, ocr\n"
+	if out.String() != want || len(log) != 0 {
+		t.Errorf("plan = %q, ran %q", out.String(), log)
 	}
 }

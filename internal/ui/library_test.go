@@ -66,12 +66,12 @@ func TestLibraryHasABannerOverTheFilmsAndStatsUnder(t *testing.T) {
 		scenes: map[core.FilmID]int{"a": 294, "b": 1},
 	})
 	s := tui.Screen()
-	s.Contains("┏━┓┏━┓┏━┓", "search all", "stats", "295 scenes", "1:35:00")
+	s.Contains("R O S E B U D", "search all", "stats", "295 scenes", "1:35:00")
 	lines := strings.Split(s.String(), "\n")
 	at := func(part string) int {
 		return slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, part) })
 	}
-	logo, menu, films, stats := at("┏━┓"), at("search all"), at("Sonatine"), at("─ stats ")
+	logo, menu, films, stats := at("`,'^"), at("search all"), at("Sonatine"), at("─ stats ")
 	if logo < 0 || menu < 0 || menu > logo+3 || films < logo || stats < films {
 		t.Errorf("want logo beside the menu on top, then films, then stats:\n%s", s)
 	}

@@ -20,12 +20,12 @@ const (
 
 // art is a rose over the name.
 var art = []artLine{
-	{"", bloom},
-	{"  `,'^", bloom},
-	{" / /  |", bloom},
-	{"| (   )", bloom},
-	{",`_\\__/,", bloom},
-	{" =| |=", stem},
+	{"   .--.--.", bloom},
+	{"  ( ( @ ) )", bloom},
+	{"   \\ `-' /", bloom},
+	{"    `-.-'", bloom},
+	{"   __ |", stem},
+	{"  (__\\|", stem},
 	{"R O S E B U D", name},
 }
 

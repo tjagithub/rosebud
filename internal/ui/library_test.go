@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"iter"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,6 +58,23 @@ func TestLibraryListsFilmsWithSceneCounts(t *testing.T) {
 	})
 	tui.Screen().Contains("Sonatine", "1:34:00", "294 scenes", "Short", "1 scene", "2 films")
 	tui.Screen().Contains("–") // Short has no known length
+}
+
+func TestLibraryHasABannerOverTheFilmsAndStatsUnder(t *testing.T) {
+	tui, _ := library(t, fakeLib{
+		films:  []core.Film{{ID: "a", Title: "Sonatine", Duration: 94 * time.Minute}, {ID: "b", Title: "Short", Duration: time.Minute}},
+		scenes: map[core.FilmID]int{"a": 294, "b": 1},
+	})
+	s := tui.Screen()
+	s.Contains("┏━┓┏━┓┏━┓", "search all", "stats", "295 scenes", "1:35:00")
+	lines := strings.Split(s.String(), "\n")
+	at := func(part string) int {
+		return slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, part) })
+	}
+	logo, menu, films, stats := at("┏━┓"), at("search all"), at("Sonatine"), at("─ stats ")
+	if logo < 0 || menu < 0 || menu > logo+3 || films < logo || stats < films {
+		t.Errorf("want logo beside the menu on top, then films, then stats:\n%s", s)
+	}
 }
 
 func TestSceneScreenNamesTheFilmInTheStatusBar(t *testing.T) {

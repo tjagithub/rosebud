@@ -134,7 +134,7 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		l.w, l.h = msg.Width, msg.Height
-		l.list.SetSize(l.filmsWidth()-2, max(msg.Height-3, 1))
+		l.list.SetSize(l.w-2, max(l.filmsHeight()-3, 1))
 		return l, nil
 	case filmsMsg:
 		return l, l.setFilms(msg)
@@ -193,14 +193,12 @@ func (l *libraryScreen) onKey(msg tea.KeyPressMsg) (cmd tea.Cmd, done bool) {
 	return nil, false
 }
 
-// filmsWidth is the outer width of the films panel.
-func (l *libraryScreen) filmsWidth() int { return max(l.w-menuWidth, 24) }
+// filmsHeight is the outer height of the films panel, between the banner and the stats.
+func (l *libraryScreen) filmsHeight() int { return max(l.h-bannerRows(l.menu)-statsRows, 3) }
 
 func (l *libraryScreen) View() string {
-	h := max(l.h, 3)
-	menu := panel{title: "rosebud", focus: l.inMenu}.render(menuWidth, h, l.menu.view(l.inMenu, menuWidth-2))
-	films := panel{title: "films", note: l.Status(), focus: !l.inMenu}.render(l.filmsWidth(), h, l.filmsBody())
-	return lipgloss.JoinHorizontal(lipgloss.Top, menu, films)
+	films := panel{title: "films", note: l.Status(), focus: !l.inMenu}.render(l.w, l.filmsHeight(), l.filmsBody())
+	return lipgloss.JoinVertical(lipgloss.Left, banner(l.w, l.menu, l.inMenu), films, stats(l.w, l.list.Items()))
 }
 
 // filmsBody is the column header, or the filter box while filtering, over the list.

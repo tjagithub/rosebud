@@ -468,11 +468,11 @@ func TestStore_Media(t *testing.T) {
 	s := newStore(t)
 	put(t, s, core.Film{ID: "a", Title: "A", Bundle: "/a"})
 	ch := []core.Chapter{{Start: 0, Title: "One"}, {Start: 90 * time.Second, Title: "Two"}}
-	if err := s.SetMedia(context.Background(), "a", 23.976, ch); err != nil {
+	if err := s.SetMedia(context.Background(), "a", core.Media{Duration: 2 * time.Hour, FPS: 23.976, Chapters: ch}); err != nil {
 		t.Fatal(err)
 	}
 	for f, err := range s.Films(context.Background()) {
-		if err != nil || f.FPS != 23.976 || len(f.Chapters) != 2 || f.Chapters[1] != ch[1] {
+		if err != nil || f.Duration != 2*time.Hour || f.FPS != 23.976 || len(f.Chapters) != 2 || f.Chapters[1] != ch[1] {
 			t.Errorf("film = %+v, %v", f, err)
 		}
 	}

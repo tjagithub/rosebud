@@ -21,7 +21,7 @@ type Sink interface {
 
 // MediaSink is a Sink that also keeps what ffprobe says about the video.
 type MediaSink interface {
-	SetMedia(ctx context.Context, film core.FilmID, fps float64, chapters []core.Chapter) error
+	SetMedia(ctx context.Context, film core.FilmID, m core.Media) error
 }
 
 // Stage finds the cuts in a film and extracts one frame per scene.
@@ -82,7 +82,7 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	return nil
 }
 
-// recordMedia stores the frame rate and chapters. Without them the interface
+// recordMedia stores the length, frame rate and chapters. Without them the interface
 // falls back to defaults, so a failure here does not fail the stage.
 func (s Stage) recordMedia(ctx context.Context, film core.FilmID, file string) {
 	ms, ok := s.Sink.(MediaSink)
@@ -93,8 +93,8 @@ func (s Stage) recordMedia(ctx context.Context, film core.FilmID, file string) {
 	if err != nil {
 		return
 	}
-	if fps, chapters, err := ParseMedia(out); err == nil {
-		_ = ms.SetMedia(ctx, film, fps, chapters)
+	if m, err := ParseMedia(out); err == nil {
+		_ = ms.SetMedia(ctx, film, m)
 	}
 }
 

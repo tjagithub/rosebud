@@ -23,6 +23,13 @@ type Film struct {
 	Chapters []Chapter // in time order; may be empty
 }
 
+// Media is what ffprobe reports about a film's file. Zero values mean unknown.
+type Media struct {
+	Duration time.Duration
+	FPS      float64
+	Chapters []Chapter
+}
+
 // Chapter is a named point in a film.
 type Chapter struct {
 	Start time.Duration

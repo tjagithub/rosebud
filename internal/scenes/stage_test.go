@@ -320,24 +320,23 @@ func TestStage_HWDevice(t *testing.T) {
 
 type mediaSink struct {
 	fakeSink
-	fps      float64
-	chapters []core.Chapter
+	media core.Media
 }
 
-func (m *mediaSink) SetMedia(_ context.Context, _ core.FilmID, fps float64, ch []core.Chapter) error {
-	m.fps, m.chapters = fps, ch
+func (m *mediaSink) SetMedia(_ context.Context, _ core.FilmID, media core.Media) error {
+	m.media = media
 	return nil
 }
 
 func TestStage_RecordsFrameRateAndChapters(t *testing.T) {
-	media := `{"streams":[{"avg_frame_rate":"25/1"}],"chapters":[{"start_time":"5.0","tags":{"title":"Act"}}]}`
+	media := `{"format":{"duration":"100.0"},"streams":[{"avg_frame_rate":"25/1"}],"chapters":[{"start_time":"5.0","tags":{"title":"Act"}}]}`
 	fe, sink := &fakeExec{duration: "100", media: media, cuts: cutsOut}, &mediaSink{}
 	stage, spec, _ := newStage(t, fe, &sink.fakeSink)
 	stage.Sink = sink
 	if err := stage.Run(context.Background(), spec, func(int64, int64) {}); err != nil {
 		t.Fatal(err)
 	}
-	if sink.fps != 25 || len(sink.chapters) != 1 || sink.chapters[0].Title != "Act" {
-		t.Errorf("fps %v chapters %+v", sink.fps, sink.chapters)
+	if m := sink.media; m.FPS != 25 || m.Duration != 100*time.Second || len(m.Chapters) != 1 || m.Chapters[0].Title != "Act" {
+		t.Errorf("media %+v", m)
 	}
 }

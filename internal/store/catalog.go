@@ -43,8 +43,10 @@ func (s *Store) PutFilm(ctx context.Context, f core.Film) error {
 	return err
 }
 
-// SetMedia records the frame rate and chapters of a film.
-func (s *Store) SetMedia(ctx context.Context, id core.FilmID, fps float64, chapters []core.Chapter) error {
+// SetMedia records the length, frame rate and chapters of a film. An unknown
+// length (0) keeps the one stored.
+func (s *Store) SetMedia(ctx context.Context, id core.FilmID, m core.Media) error {
+	chapters := m.Chapters
 	if chapters == nil {
 		chapters = []core.Chapter{}
 	}
@@ -52,7 +54,9 @@ func (s *Store) SetMedia(ctx context.Context, id core.FilmID, fps float64, chapt
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `update films set fps = ?, chapters = ? where id = ?`, fps, string(js), id)
+	d := int64(m.Duration)
+	_, err = s.db.ExecContext(ctx, `update films set fps = ?, chapters = ?,
+		duration_ns = case when ? > 0 then ? else duration_ns end where id = ?`, m.FPS, string(js), d, d, id)
 	return err
 }
 

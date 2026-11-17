@@ -77,6 +77,13 @@ func TestLibraryHasABannerOverTheFilmsAndStatsUnder(t *testing.T) {
 	}
 }
 
+func TestLibraryDrawsTheBigRoseWhenTheWindowIsTall(t *testing.T) {
+	tui, _ := library(t, fakeLib{films: []core.Film{{ID: "a", Title: "Sonatine"}}})
+	tui.Screen().Lacks("█▒▒░█▒▒▒▒▒░")
+	tui.Send(tea.WindowSizeMsg{Width: 100, Height: 40})
+	tui.Screen().Contains("█▒▒░█▒▒▒▒▒░", "R O S E B U D", "search all", "Sonatine", "─ stats ")
+}
+
 func TestSceneScreenNamesTheFilmInTheStatusBar(t *testing.T) {
 	tui := filmWithMedia(t)
 	tui.Screen().Contains("films › scene 1", "Sonatine")

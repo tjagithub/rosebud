@@ -194,11 +194,11 @@ func (l *libraryScreen) onKey(msg tea.KeyPressMsg) (cmd tea.Cmd, done bool) {
 }
 
 // filmsHeight is the outer height of the films panel, between the banner and the stats.
-func (l *libraryScreen) filmsHeight() int { return max(l.h-bannerRows(l.menu)-statsRows, 3) }
+func (l *libraryScreen) filmsHeight() int { return max(l.h-bannerRows(l.menu, l.h)-statsRows, 3) }
 
 func (l *libraryScreen) View() string {
 	films := panel{title: "films", note: l.Status(), focus: !l.inMenu}.render(l.w, l.filmsHeight(), l.filmsBody())
-	return lipgloss.JoinVertical(lipgloss.Left, banner(l.w, l.menu, l.inMenu), films, stats(l.w, l.list.Items()))
+	return lipgloss.JoinVertical(lipgloss.Left, banner(l.w, l.h, l.menu, l.inMenu), films, stats(l.w, l.list.Items()))
 }
 
 // filmsBody is the column header, or the filter box while filtering, over the list.

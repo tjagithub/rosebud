@@ -35,7 +35,7 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cobra.Command {
 	fs := flag.NewFlagSet("ocr", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
-	lang := fs.String("lang", "auto", "language code of the subtitle track to read, or auto for the best bitmap track")
+	lang := fs.String("lang", "auto", "language code of the subtitle track to read, or auto for the best track (a foreign one over English, text over bitmap)")
 	model := fs.String("model", nemotronModel, "OCR model")
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
 	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")
@@ -44,7 +44,7 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 	fps := fs.Int("fps", 2, "with --burned, frames sampled per second")
 	masks := fs.String("masks", "", `with --burned, areas to black out, such as watermarks: "w,h,x,y;..." in pixels or iw/ih expressions`)
 	rng := fs.String("range", "", "with --burned, the part of the film to read as FROM:TO, such as 1m30s:4m (either may be empty)")
-	cmd := &cobra.Command{Use: "ocr [flags] FILE", Short: "Read bitmap subtitles into a film's scenes", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "ocr [flags] FILE", Short: "Read a film's subtitles into its scenes: text tracks as they are, bitmap tracks by OCR", Args: oneFile, RunE: func(c *cobra.Command, args []string) error {
 		ctx, stdout, stderr := c.Context(), c.OutOrStdout(), c.ErrOrStderr()
 		file, err := filepath.Abs(args[0])
 		if err != nil {

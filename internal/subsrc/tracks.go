@@ -101,16 +101,19 @@ func partial(title string) bool {
 	return strings.Contains(title, "forced") || strings.Contains(title, "signs")
 }
 
-// PickAuto chooses the bitmap track to OCR when no language is given: a full
-// track over a forced one, and a foreign one over English, which needs no translating.
+// PickAuto chooses a track when no language is given: a foreign one over
+// English, which needs no translating, then full over forced, then text over bitmap.
 func PickAuto(tracks []Track) (Track, bool) {
 	var best Track
 	bestScore := 0
 	for _, t := range tracks {
-		if t.Kind() != Bitmap {
+		if t.Kind() == Unknown {
 			continue
 		}
 		s := 1
+		if t.Kind() == Text {
+			s += 2
+		}
 		if !partial(t.Title) {
 			s += 4
 		}

@@ -109,6 +109,40 @@ func TestStageFailsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestStageReadsATextTrackWithoutOCR(t *testing.T) {
+	srt := "1\n00:00:01,000 --> 00:00:02,000\none\n\n2\n00:00:05,000 --> 00:00:06,000\n<i>two</i>\n\n3\n00:00:12,000 --> 00:00:13,000\nthree\n\n4\n00:00:30,000 --> 00:00:31,000\nafter the end\n"
+	var ffmpegArgs string
+	ex := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name == "ffmpeg" {
+			ffmpegArgs = strings.Join(args, " ")
+			return []byte(srt), nil
+		}
+		return []byte("2,dvd_subtitle,jpn\n3,subrip,jpn\n"), nil
+	}
+	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(10)}, {ID: 2, Start: sec(10), End: sec(20)}}}
+	rd := &bandReader{}
+	var issues []ocr.Issue
+	s := newStage(ex, st, rd)
+	s.OnIssues = func(i []ocr.Issue) { issues = append(issues, i...) }
+	for _, lang := range []string{"jpn", "auto"} {
+		if err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv", "lang": lang}), noProgress); err != nil {
+			t.Fatalf("lang %s: %v", lang, err)
+		}
+		if st.got[1] != "one\ntwo" || st.got[2] != "three" {
+			t.Errorf("lang %s: stored %v", lang, st.got)
+		}
+	}
+	if len(rd.calls) != 0 {
+		t.Errorf("a text track must not go to the OCR model, got %d reads", len(rd.calls))
+	}
+	if !strings.Contains(ffmpegArgs, "-map 0:s:1") {
+		t.Errorf("want the subrip track (s:1) read, ffmpeg got %s", ffmpegArgs)
+	}
+	if len(issues) == 0 || !strings.Contains(issues[0].Reason, "overlaps no scene") {
+		t.Errorf("the cue after the last scene should be reported, got %+v", issues)
+	}
+}
+
 func TestStageNoScenes(t *testing.T) {
 	s := newStage(ffExec("", 0), &memStore{}, &bandReader{})
 	if err := s.Run(t.Context(), spec(map[string]string{"file": "f", "lang": "jpn"}), noProgress); err == nil {
@@ -118,7 +152,7 @@ func TestStageNoScenes(t *testing.T) {
 
 func TestStageSkipMessagesNameWhatIsMissing(t *testing.T) {
 	for lang, want := range map[string]string{
-		"auto": "has no bitmap subtitle track to OCR",
+		"auto": "has no subtitle track to read",
 		"fra":  `has no readable "fra" subtitle track`,
 	} {
 		ex := ffExec("", 0)

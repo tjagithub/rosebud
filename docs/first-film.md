@@ -11,10 +11,10 @@ changes the film itself.
 rose build ~/Films/Sonatine.mkv
 ```
 
-`build` runs the stages in order: `scenes`, then `subs` (speech), `ocr` (bitmap
-subtitles) and `translate`. If one stage fails, only the stages that need it stop;
-the others still run. It also skips stages that have nothing to do, such as `ocr` on
-a film with no bitmap subtitle track.
+`build` runs the stages in order: `scenes`, then `subs` (speech), `ocr` (the
+subtitle track) and `translate`. If one stage fails, only the stages that need it
+stop; the others still run. It also skips stages that have nothing to do, such as
+`ocr` on a film with no subtitle track.
 
 Useful flags:
 
@@ -33,7 +33,7 @@ shows each stage.
 rose lang FILE        # which language is spoken? (optional; subs does this itself)
 rose scenes FILE      # cut into scenes, one frame each — run this first
 rose subs FILE        # transcribe the speech
-rose ocr FILE         # read a bitmap subtitle track (DVD/Blu-ray subs)
+rose ocr FILE         # read the subtitle track: text (SRT, ASS) as is, DVD/Blu-ray by OCR
 rose ocr FILE --burned   # or read subtitles burned into the picture
 rose translate FILE   # add English, so English searches find Japanese lines
 ```

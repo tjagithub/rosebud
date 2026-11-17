@@ -21,8 +21,8 @@ type Store interface {
 	SetSubtitle(ctx context.Context, film core.FilmID, text map[core.SceneID]string) error
 }
 
-// Stage writes the on-screen subtitle text of each scene, read from a bitmap
-// track. The job's "file" and "lang" params pick the file and the track.
+// Stage writes the subtitle text of each scene, read straight from a text track
+// or by OCR from a bitmap one. The job's "file" and "lang" params pick the track.
 type Stage struct {
 	Exec         Exec
 	Store        Store
@@ -43,50 +43,23 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	if err != nil {
 		return err
 	}
-	tracks, err := subsrc.Probe(ctx, s.Exec, file, s.ProbeTimeout)
+	tr, err := s.track(ctx, file, lang)
 	if err != nil {
 		return err
 	}
-	var tr subsrc.Track
-	var ok bool
-	if lang == "auto" {
-		tr, ok = subsrc.PickAuto(tracks)
-	} else {
-		tr, ok = subsrc.Pick(tracks, lang)
+	read := s.readBitmap
+	if tr.Kind() == subsrc.Text {
+		read = s.readText
 	}
-	if !ok {
-		if lang == "auto" {
-			return core.Skip("%s has no bitmap subtitle track to OCR", file)
-		}
-		return core.Skip("%s has no readable %q subtitle track to OCR", file, lang)
-	}
-	if tr.Kind() != subsrc.Bitmap {
-		return fmt.Errorf("ocr: %s track %d is %s, not a bitmap track", file, tr.Pos, tr.Codec)
-	}
-	events, issues, err := s.events(ctx, file, tr.Pos)
+	events, texts, issues, err := read(ctx, file, tr.Pos, progress)
 	if err != nil {
 		return err
 	}
-	valid, more := Partition(events)
-	issues = append(issues, more...)
-	frames, err := Frames(ctx, s.Exec, file, tr.Pos, s.Timeout)
-	if err != nil {
-		return err
-	}
-	if len(frames) != len(valid) {
-		return fmt.Errorf("ocr: %s has %d subtitle events but %d rendered frames", file, len(valid), len(frames))
-	}
-	progress(0, int64(PageCount(len(frames))))
-	texts, more, err := ReadEvents(WithProgress(ctx, progress), s.Reader, frames)
-	if err != nil {
-		return err
-	}
-	issues = append(issues, more...)
 	spans := make([]subs.Span, len(scenes))
 	for i, sc := range scenes {
 		spans[i] = subs.Span{Start: sc.Start, End: sc.End}
 	}
-	byScene, more := Assign(spans, valid, texts)
+	byScene, more := Assign(spans, events, texts)
 	issues = append(issues, more...)
 	out := make(map[core.SceneID]string, len(byScene))
 	for i, t := range byScene {
@@ -96,6 +69,60 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 		s.OnIssues(issues)
 	}
 	return s.Store.SetSubtitle(ctx, spec.Film, out)
+}
+
+// track probes file and picks the subtitle track for lang, or the best one for "auto".
+func (s Stage) track(ctx context.Context, file, lang string) (subsrc.Track, error) {
+	tracks, err := subsrc.Probe(ctx, s.Exec, file, s.ProbeTimeout)
+	if err != nil {
+		return subsrc.Track{}, err
+	}
+	if lang == "auto" {
+		if tr, ok := subsrc.PickAuto(tracks); ok {
+			return tr, nil
+		}
+		return subsrc.Track{}, core.Skip("%s has no subtitle track to read", file)
+	}
+	if tr, ok := subsrc.Pick(tracks, lang); ok {
+		return tr, nil
+	}
+	return subsrc.Track{}, core.Skip("%s has no readable %q subtitle track", file, lang)
+}
+
+// readText takes the cues of a text track as they are: no model needed.
+func (s Stage) readText(ctx context.Context, file string, pos int, _ func(done, total int64)) ([]Event, []string, []Issue, error) {
+	cues, err := subsrc.ReadText(ctx, s.Exec, file, pos, s.Timeout)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	events, texts := make([]Event, len(cues)), make([]string, len(cues))
+	for i, c := range cues {
+		events[i], texts[i] = Event{Start: c.Start, End: c.End}, c.Text
+	}
+	return events, texts, nil, nil
+}
+
+// readBitmap draws each event of a bitmap track and reads it with the OCR model.
+func (s Stage) readBitmap(ctx context.Context, file string, pos int, progress func(done, total int64)) ([]Event, []string, []Issue, error) {
+	events, issues, err := s.events(ctx, file, pos)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	valid, more := Partition(events)
+	issues = append(issues, more...)
+	frames, err := Frames(ctx, s.Exec, file, pos, s.Timeout)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(frames) != len(valid) {
+		return nil, nil, nil, fmt.Errorf("ocr: %s has %d subtitle events but %d rendered frames", file, len(valid), len(frames))
+	}
+	progress(0, int64(PageCount(len(frames))))
+	texts, more, err := ReadEvents(WithProgress(ctx, progress), s.Reader, frames)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return valid, texts, append(issues, more...), nil
 }
 
 func (s Stage) events(ctx context.Context, file string, sub int) ([]Event, []Issue, error) {

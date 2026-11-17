@@ -7,7 +7,8 @@ dialogue, find the frame.
 
 - `ffmpeg` and `ffprobe` with the `silencedetect` and `ametadata` filters.
 - `uv`, which runs `parakeet-mlx` for `rose subs` (Apple Silicon).
-- `uv` also runs Nemotron-Parse for `rose ocr`, which reads bitmap subtitles.
+- `uv` also runs Nemotron-Parse for `rose ocr` on bitmap subtitles. Text
+  subtitle tracks (SRT, ASS, WebVTT) are read without a model.
 
 Speech models are downloaded on first use: NVIDIA Parakeet, licensed
 CC-BY-4.0. `parakeet-mlx` is Apache-2.0. Nemotron-Parse

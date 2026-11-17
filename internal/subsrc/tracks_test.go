@@ -179,7 +179,10 @@ func TestPickAuto(t *testing.T) {
 		{"original language over english", []subsrc.Track{eng, jpn}, 1},
 		{"full over forced", []subsrc.Track{forced, jpn}, 1},
 		{"english when it is all there is", []subsrc.Track{eng}, 0},
-		{"text tracks are not for ocr", []subsrc.Track{srt}, -1},
+		{"a text track over a bitmap one in the same language", []subsrc.Track{jpn, srt}, 3},
+		{"original language bitmap over english text", []subsrc.Track{{Pos: 4, Codec: "subrip", Lang: "eng"}, jpn}, 1},
+		{"text alone", []subsrc.Track{srt}, 3},
+		{"unreadable codecs are passed over", []subsrc.Track{{Pos: 5, Codec: "eia_608", Lang: "jpn"}}, -1},
 		{"none", nil, -1},
 	} {
 		got, ok := subsrc.PickAuto(c.tracks)

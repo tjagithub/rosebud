@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"

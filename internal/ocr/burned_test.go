@@ -137,8 +137,10 @@ func TestBurnedStageAppliesMasksAndRange(t *testing.T) {
 	m, _ := ocr.ParseMask("100,50,0,0")
 	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(100)}}}
 	rd := &bandReader{texts: [][]string{{"hi"}}}
-	s := ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, Timeout: time.Minute, MinInk: 20,
-		Sampling: ocr.Sampling{FPS: 1, Masks: []ocr.Mask{m}, From: sec(30), To: sec(60)}}
+	s := ocr.BurnedStage{
+		Exec: ex, Store: st, Reader: rd, Timeout: time.Minute, MinInk: 20,
+		Sampling: ocr.Sampling{FPS: 1, Masks: []ocr.Mask{m}, From: sec(30), To: sec(60)},
+	}
 	if err := s.Run(t.Context(), spec(map[string]string{"file": "f.mkv"}), noProgress); err != nil {
 		t.Fatal(err)
 	}

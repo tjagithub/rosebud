@@ -3,10 +3,11 @@ package ui
 import (
 	"context"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"io"
 	"iter"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"

@@ -35,10 +35,16 @@ type Backend struct {
 
 // Backends are the supported ways to translate. Plamo runs the model's remote code.
 var Backends = map[string]Backend{
-	"rikai": {"rikai", rikaiScript, []string{"mlx-lm==0.32.2"},
-		"rikai-translate/rikai-jp-eng-Bench-265-0.8B", "ec42fcdcd4d3b1f3465b612d5c07ce040ece6d90"},
-	"plamo": {"plamo", plamoScript, []string{"mlx-lm==0.32.2", "transformers==5.22.2", "numba==0.68.1"},
-		"pfnet/plamo-3-translate-0.8b-MLX-4bit", "e5fe5b7f26ebaeae48db0ce644b932d1d9b91aaa"},
+	"rikai": {
+		"rikai", rikaiScript,
+		[]string{"mlx-lm==0.32.2"},
+		"rikai-translate/rikai-jp-eng-Bench-265-0.8B", "ec42fcdcd4d3b1f3465b612d5c07ce040ece6d90",
+	},
+	"plamo": {
+		"plamo", plamoScript,
+		[]string{"mlx-lm==0.32.2", "transformers==5.22.2", "numba==0.68.1"},
+		"pfnet/plamo-3-translate-0.8b-MLX-4bit", "e5fe5b7f26ebaeae48db0ce644b932d1d9b91aaa",
+	},
 }
 
 // Local translates with a Backend through one uv-run Python process. Translate

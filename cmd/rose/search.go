@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,7 +35,7 @@ func searchCmd() *cobra.Command {
 			ctx, stdout := c.Context(), c.OutOrStdout()
 			words := strings.Join(args, " ")
 			if bundle == "" || strings.TrimSpace(words) == "" || limit <= 0 {
-				return fmt.Errorf("usage: rose search --bundle DIR [--limit N] WORDS...")
+				return errors.New("usage: rose search --bundle DIR [--limit N] WORDS")
 			}
 			dbPath := filepath.Join(bundle, "rose.db")
 			if err := statWithin(dbPath, 15*time.Second, os.Stat); err != nil {

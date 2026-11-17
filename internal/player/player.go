@@ -19,10 +19,12 @@ type Frame struct {
 // VideoArgs are ffmpeg's arguments to write raw RGB frames at fps, scaled to
 // w by h with bars if the picture is another shape, from the given film time to stdout.
 func VideoArgs(file string, from time.Duration, w, h int, fps float64) []string {
-	return []string{"-nostdin", "-v", "error", "-ss", secs(from), "-i", file, "-an",
+	return []string{
+		"-nostdin", "-v", "error", "-ss", secs(from), "-i", file, "-an",
 		"-vf", fmt.Sprintf("fps=%s,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
 			strconv.FormatFloat(fps, 'f', -1, 64), w, h, w, h),
-		"-f", "rawvideo", "-pix_fmt", "rgb24", "-"}
+		"-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+	}
 }
 
 // AudioArgs are ffplay's arguments to play the sound from the given film time.
@@ -35,7 +37,8 @@ func secs(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f',
 // Frames sends the w by h RGB frames of r when due, the i-th at i/fps. A frame
 // a whole frame late is dropped. The channel closes at the end of r or of ctx.
 func Frames(ctx context.Context, r io.Reader, w, h int, fps float64, from time.Duration,
-	now func() time.Duration, sleep func(context.Context, time.Duration) error) <-chan Frame {
+	now func() time.Duration, sleep func(context.Context, time.Duration) error,
+) <-chan Frame {
 	out := make(chan Frame)
 	go func() {
 		defer close(out)

@@ -208,8 +208,10 @@ func (d *detailScreen) startPlay() tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	seq, id, box := d.seq, d.fr.id, d.fr.box
 	enc := func(f player.Frame) playFrameMsg { return encodeFrame(f, seq, id, box, w, h) }
-	d.play = &playState{pb: pb, seq: seq, at: from, cancel: cancel,
-		out: pump(ctx, pb, enc, playFPS, playLead, playWorkers)}
+	d.play = &playState{
+		pb: pb, seq: seq, at: from, cancel: cancel,
+		out: pump(ctx, pb, enc, playFPS, playLead, playWorkers),
+	}
 	d.fr.want = "play"
 	return d.next(d.play)
 }
@@ -262,7 +264,7 @@ func traceFrame(where string, i int, due, sent time.Duration) {
 		}
 	})
 	if traceFile != nil {
-		fmt.Fprintf(traceFile, "%s %d t=%d due_late=%d sent_late=%d\n", where, i,
+		_, _ = fmt.Fprintf(traceFile, "%s %d t=%d due_late=%d sent_late=%d\n", where, i,
 			time.Since(traceZero).Milliseconds(), due.Milliseconds(), sent.Milliseconds())
 	}
 }

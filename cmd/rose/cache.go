@@ -1,19 +1,13 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"github.com/spf13/cobra"
-	"io"
 	"os"
 	"time"
-)
 
-// runCache implements `rose cache clear`, which deletes cached results.
-func runCache(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	return execute(ctx, cacheCmd(), args, stdout, stderr)
-}
+	"github.com/spf13/cobra"
+)
 
 func cacheCmd() *cobra.Command {
 	cache := &cobra.Command{

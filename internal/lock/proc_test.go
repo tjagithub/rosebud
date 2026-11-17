@@ -21,10 +21,10 @@ func TestHelperHolder(t *testing.T) {
 		t.Skip("only runs as a child of the cross-process tests")
 	}
 	if _, err := lock.Acquire(dir); err != nil {
-		os.Stdout.WriteString("error " + err.Error() + "\n")
+		_, _ = os.Stdout.WriteString("error " + err.Error() + "\n")
 		os.Exit(1)
 	}
-	os.Stdout.WriteString("held\n")
+	_, _ = os.Stdout.WriteString("held\n")
 	time.Sleep(time.Minute)
 }
 

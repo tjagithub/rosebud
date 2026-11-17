@@ -5,8 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"io"
 	"maps"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/tjagithub/rosebud/internal/cache"
 	"github.com/tjagithub/rosebud/internal/core"

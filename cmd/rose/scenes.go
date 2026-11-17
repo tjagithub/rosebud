@@ -5,13 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
@@ -20,12 +21,8 @@ import (
 	"github.com/tjagithub/rosebud/internal/store"
 )
 
-// runScenes cuts a film into scenes and extracts a frame for each, into a
+// scenesCmd cuts a film into scenes and extracts a frame for each, into a
 // bundle directory next to the file.
-func runScenes(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	return execute(ctx, scenesCmd(), args, stdout, stderr)
-}
-
 func scenesCmd() *cobra.Command {
 	fs := flag.NewFlagSet("scenes", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")

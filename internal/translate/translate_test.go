@@ -19,8 +19,10 @@ const model = "pfnet/plamo-3-translate-0.8b-MLX-4bit"
 var plamoBackend = translate.Backends["plamo"]
 
 func plamo(ex translate.Exec) translate.Local {
-	return translate.Local{Exec: ex, Backend: plamoBackend, Model: model, Revision: plamoBackend.Revision, Source: "ja",
-		Load: time.Minute, PerLine: time.Minute}
+	return translate.Local{
+		Exec: ex, Backend: plamoBackend, Model: model, Revision: plamoBackend.Revision, Source: "ja",
+		Load: time.Minute, PerLine: time.Minute,
+	}
 }
 
 // fakeUV records the command and the input it was given, then answers each line.

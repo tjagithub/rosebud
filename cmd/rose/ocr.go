@@ -5,13 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/tjagithub/rosebud/internal/cache"
 	"github.com/tjagithub/rosebud/internal/core"
@@ -136,8 +137,10 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 			if err != nil {
 				return err
 			}
-			run = ocr.BurnedStage{Exec: ex, Store: st, Reader: rd, MinInk: 400, Timeout: *timeout,
-				Sampling: ocr.Sampling{FPS: *fps, Masks: ms, From: from, To: to}, OnIssues: issues}.Run
+			run = ocr.BurnedStage{
+				Exec: ex, Store: st, Reader: rd, MinInk: 400, Timeout: *timeout,
+				Sampling: ocr.Sampling{FPS: *fps, Masks: ms, From: from, To: to}, OnIssues: issues,
+			}.Run
 		}
 		eng := engine.New(st, engine.WithStage("ocr", run))
 		defer func() { _ = eng.Close() }()

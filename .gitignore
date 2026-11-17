@@ -2,3 +2,6 @@
 /dist/
 *.film/
 .DS_Store
+.vscode/
+__pycache__/
+testdata/rapid/

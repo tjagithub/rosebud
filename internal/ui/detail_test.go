@@ -1,11 +1,12 @@
 package ui_test
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/ui"

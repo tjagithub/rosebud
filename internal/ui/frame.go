@@ -131,7 +131,7 @@ func encodeImage(img image.Image, id int, box size, px int) (string, int, int) {
 	var buf bytes.Buffer
 	err := kitty.EncodeGraphics(&buf, img, &kitty.Options{
 		Action: kitty.TransmitAndPut, ID: id, Format: kitty.PNG, Transmission: kitty.Direct,
-		VirtualPlacement: true, Columns: cols, Rows: rows, Quite: 2, Chunk: true,
+		VirtualPlacement: true, Columns: cols, Rows: rows, Quiet: 2, Chunk: true,
 	})
 	if err != nil {
 		return "", 0, 0

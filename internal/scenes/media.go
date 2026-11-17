@@ -11,8 +11,10 @@ import (
 )
 
 // probeMedia are the ffprobe arguments whose JSON ParseMedia reads.
-var probeMedia = []string{"-v", "error", "-select_streams", "v:0", "-show_chapters",
-	"-show_entries", "stream=avg_frame_rate:chapter=start_time:chapter_tags=title", "-of", "json"}
+var probeMedia = []string{
+	"-v", "error", "-select_streams", "v:0", "-show_chapters",
+	"-show_entries", "stream=avg_frame_rate:chapter=start_time:chapter_tags=title", "-of", "json",
+}
 
 // ParseMedia reads the frame rate and chapters from ffprobe's JSON. A missing
 // or unusable rate is 0.

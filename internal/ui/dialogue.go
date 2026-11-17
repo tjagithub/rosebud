@@ -1,12 +1,10 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/tjagithub/rosebud/internal/core"
 )
@@ -76,28 +74,6 @@ func matches(h core.Hit, q string) bool {
 		}
 	}
 	return false
-}
-
-// lines is the timestamped lines of the hits at idx, scrolled to keep cur in
-// view and drawn within w cells; rows is how many fit.
-func lines(hits []core.Hit, idx []int, cur, rows, w int) string {
-	pos := 0
-	for p, i := range idx {
-		if i == cur {
-			pos = p
-		}
-	}
-	start := max(min(pos-rows/2, len(idx)-rows), 0)
-	var out []string
-	for p := start; p < min(start+rows, len(idx)); p++ {
-		h := hits[idx[p]]
-		line := lipgloss.NewStyle().MaxWidth(w).Render(fmt.Sprintf("%-7s %s", Clock(h.Scene.Start), firstLine(h)))
-		if idx[p] == cur {
-			line = selected.Render(line)
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
 }
 
 // firstLine is a hit's own words on one line, else its translation.

@@ -85,7 +85,8 @@ func (d *detailScreen) Title() string {
 
 var (
 	backKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
-	stepKey = key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "previous/next"))
+	stepKey = key.NewBinding(key.WithKeys("left", "right", ",", "."), key.WithHelp("←/→ ,/.", "previous/next"))
+	leapKey = key.NewBinding(key.WithKeys("<", ">"), key.WithHelp("</>", "5 scenes"))
 )
 
 var (
@@ -98,95 +99,141 @@ var (
 )
 
 func (d *detailScreen) ShortHelp() []key.Binding {
-	return []key.Binding{stepKey, focusKey, scrollKey, pickKey, playKey, timeKey, filterKey, backKey}
+	return []key.Binding{stepKey, leapKey, focusKey, scrollKey, pickKey, playKey, timeKey, filterKey, backKey}
 }
 func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
 func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		d.w, d.h = msg.Width, msg.Height
-		d.fr.box = size{cols: max(d.w-4, 8), rows: max(d.h-detailChrome, 1)}
-		d.th.resize(d.w)
-		d.layout()
-		return d, d.reload()
+		return d, d.resize(msg)
 	case FrameMsg:
 		return d, tea.Batch(d.fr.onFrame(msg), d.th.onFrame(msg))
 	case playFrameMsg:
 		return d, d.onPlayFrame(msg)
 	case jumpMsg:
-		if msg.To != d || msg.I >= len(d.hits) {
-			return d, nil
-		}
-		d.i = msg.I
-		return d, d.reload()
+		return d, d.jump(msg)
 	case scenesMsg:
-		if msg.ID != d.loadID {
-			return d, nil
-		}
-		d.hits, d.err, d.i = msg.Hits, msg.Err, 0
-		return d, d.reload()
-	case tea.MouseWheelMsg:
-		if msg.Y >= d.h-boxRows-2 {
-			return d, d.tb.scroll(msg)
-		}
-	case tea.MouseClickMsg:
-		if msg.Y >= d.h-boxRows-2 {
-			d.tb.focus = d.tb.at(msg.X)
-		}
+		return d, d.setScenes(msg)
+	case tea.MouseMsg:
+		return d, d.onMouse(msg)
 	case tea.KeyPressMsg:
-		if d.f.editing {
-			wasActive := d.f.active()
-			changed, cmd := d.f.update(msg)
-			if changed {
-				cmd = tea.Batch(cmd, d.settle())
-			}
-			d.relayout(wasActive)
-			return d, cmd
-		}
-		if d.play != nil {
-			switch msg.String() {
-			case "esc", "p", "space":
-				return d, d.stopPlay()
-			case "left", "right":
-				cmd := d.stopPlay()
-				return d, tea.Batch(cmd, d.step(map[string]int{"left": -1, "right": 1}[msg.String()]))
-			}
-			return d, nil
-		}
-		if scrolls(msg.String()) {
-			return d, d.tb.scroll(msg)
-		}
-		switch msg.String() {
-		case "tab":
-			d.tb.toggle()
-			return d, nil
-		case "left":
-			return d, d.step(-1)
-		case "right":
-			return d, d.step(1)
-		case "p":
-			return d, d.startPlay()
-		case "s":
-			return d, Open(newPicker(d))
-		case "t":
-			return d, Open(newTimecode(d, d.fps()))
-		case "/":
-			cmd := d.f.open()
-			d.relayout(false)
-			return d, cmd
-		case "S":
-			d.f.clear()
-			d.relayout(true)
-			return d, nil
-		case "esc":
-			if d.f.active() {
-				d.f.clear()
-				d.relayout(true)
-			}
-		}
+		return d, d.onKey(msg)
 	}
 	return d, nil
+}
+
+func (d *detailScreen) resize(msg tea.WindowSizeMsg) tea.Cmd {
+	d.w, d.h = msg.Width, msg.Height
+	d.fr.box = size{cols: max(d.w-4, 8), rows: max(d.h-detailChrome, 1)}
+	d.th.resize(d.w)
+	d.layout()
+	return d.reload()
+}
+
+// jump goes to the scene a picker or timecode overlay chose for this screen.
+func (d *detailScreen) jump(msg jumpMsg) tea.Cmd {
+	if msg.To != d || msg.I >= len(d.hits) {
+		return nil
+	}
+	d.i = msg.I
+	return d.reload()
+}
+
+// setScenes takes the scenes this screen asked for.
+func (d *detailScreen) setScenes(msg scenesMsg) tea.Cmd {
+	if msg.ID != d.loadID {
+		return nil
+	}
+	d.hits, d.err, d.i = msg.Hits, msg.Err, 0
+	return d.reload()
+}
+
+// onMouse focuses the text box clicked and scrolls the one under the wheel.
+func (d *detailScreen) onMouse(msg tea.MouseMsg) tea.Cmd {
+	m := msg.Mouse()
+	if m.Y < d.h-boxRows-2 {
+		return nil
+	}
+	if _, click := msg.(tea.MouseClickMsg); click {
+		d.tb.focus = d.tb.at(m.X)
+		return nil
+	}
+	if _, wheel := msg.(tea.MouseWheelMsg); wheel {
+		return d.tb.scroll(msg)
+	}
+	return nil
+}
+
+// onKey sends a key to the filter bar while it is open, to playback while
+// it runs, and otherwise to the scene.
+func (d *detailScreen) onKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case d.f.editing:
+		return d.onFilterKey(msg)
+	case d.play != nil:
+		return d.onPlayKey(msg)
+	case scrolls(msg.String()):
+		return d.tb.scroll(msg)
+	}
+	return d.onSceneKey(msg)
+}
+
+func (d *detailScreen) onFilterKey(msg tea.KeyPressMsg) tea.Cmd {
+	wasActive := d.f.active()
+	changed, cmd := d.f.update(msg)
+	if changed {
+		cmd = tea.Batch(cmd, d.settle())
+	}
+	d.relayout(wasActive)
+	return cmd
+}
+
+// onPlayKey stops playback; left and right also step to the next scene.
+func (d *detailScreen) onPlayKey(msg tea.KeyPressMsg) tea.Cmd {
+	by := stepBy(msg.String())
+	switch msg.String() {
+	case "esc", "p", "space", "left", "right", ",", ".", "<", ">":
+		cmd := d.stopPlay()
+		if by != 0 {
+			cmd = tea.Batch(cmd, d.step(by))
+		}
+		return cmd
+	}
+	return nil
+}
+
+// stepBy is how many scenes a key steps, and which way: one for the arrows
+// and , . (for a hand already on the letter keys), five for < >.
+func stepBy(k string) int {
+	return map[string]int{"left": -1, ",": -1, "right": 1, ".": 1, "<": -leap, ">": leap}[k]
+}
+
+const leap = 5
+
+func (d *detailScreen) onSceneKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "tab":
+		d.tb.toggle()
+	case "left", "right", ",", ".", "<", ">":
+		return d.step(stepBy(msg.String()))
+	case "p":
+		return d.startPlay()
+	case "s":
+		return Open(newPicker(d))
+	case "t":
+		return Open(newTimecode(d, d.fps()))
+	case "/":
+		cmd := d.f.open()
+		d.relayout(false)
+		return cmd
+	case "S", "esc":
+		if d.f.active() {
+			d.f.clear()
+			d.relayout(true)
+		}
+	}
+	return nil
 }
 
 // Capturing is true while the filter bar takes keys, so esc closes it, not the screen.
@@ -233,15 +280,42 @@ const dialogueRows = boxRows
 func (d *detailScreen) View() string {
 	w := max(d.w, 20)
 	imgRows := max(d.h-detailChrome, 1)
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(w)
-	img := box.Render(lipgloss.Place(w-2, imgRows, lipgloss.Center, lipgloss.Center, d.image()))
-	bar := ""
+	frame := panel{title: d.sceneTitle(), note: d.sceneNote(), focus: d.play != nil}
+	img := frame.render(w, imgRows+2, lipgloss.Place(w-2, imgRows, lipgloss.Center, lipgloss.Center, d.image()))
+	bar, note := "", ""
 	if d.f.active() {
-		bar = d.f.bar()
+		bar, note = d.f.bar(), plural(len(d.visible()), "match")
 	}
-	text := d.tb.view(bar)
+	text := d.tb.view(bar, note)
 	return strings.Join([]string{d.th.view(w, d.pos(), len(d.visible())), img, text}, "\n")
 }
+
+// sceneTitle names the scene on show and its chapter, if it has one.
+func (d *detailScreen) sceneTitle() string {
+	if len(d.hits) == 0 {
+		return "scene"
+	}
+	s := d.hit().Scene
+	if c := d.chapter(s.Start); c != "–" {
+		return fmt.Sprintf("scene %d · %s", s.ID, c)
+	}
+	return fmt.Sprintf("scene %d", s.ID)
+}
+
+// sceneNote is the scene's span and length, or that it is playing.
+func (d *detailScreen) sceneNote() string {
+	if d.play != nil {
+		return accentText.Render("▶ playing")
+	}
+	if len(d.hits) == 0 {
+		return ""
+	}
+	s := d.hit().Scene
+	return fmt.Sprintf("%s – %s · %.0fs", Clock(s.Start), Clock(s.End), (s.End - s.Start).Seconds())
+}
+
+// Status is the film's title.
+func (d *detailScreen) Status() string { return d.film.Title }
 
 // image is the frame's placeholder cells, or nothing while it loads.
 func (d *detailScreen) image() string {
@@ -289,15 +363,16 @@ func (d *detailScreen) reload() tea.Cmd {
 
 var _ help.KeyMap = (*detailScreen)(nil)
 
-// step moves to the neighbouring visible hit, if there is one, and loads its frame.
+// step moves by visible hits, stopping at the first and last, and loads the frame.
 func (d *detailScreen) step(by int) tea.Cmd {
 	idx := d.visible()
 	for p, i := range idx {
 		if i == d.i {
-			if p+by < 0 || p+by >= len(idx) {
+			to := min(max(p+by, 0), len(idx)-1)
+			if to == p {
 				return nil
 			}
-			d.i = idx[p+by]
+			d.i = idx[to]
 			return d.reload()
 		}
 	}

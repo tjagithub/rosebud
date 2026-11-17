@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,9 +13,9 @@ import (
 const (
 	thumbID    = 20 // kitty image slots of the strip, thumbID .. thumbID+thumbN-1
 	thumbN     = 5
-	thumbRows  = 3
+	thumbRows  = 7
 	stripRows  = thumbRows + 2 // with its border
-	thumbPixel = 160           // thumbnails are sent this many pixels wide
+	thumbPixel = 320           // thumbnails are sent this many pixels wide
 )
 
 // strip is a row of thumbnails around the current scene, with arrows where
@@ -34,7 +35,7 @@ func newStrip(bundle string) strip {
 
 // resize sizes the thumbnails to fit a window w cells wide.
 func (s *strip) resize(w int) {
-	s.cols = min(max((w-6)/thumbN-2, 4), 12)
+	s.cols = min(max((w-6)/thumbN-2, 4), thumbRows*4) // a cell is about twice as tall as wide
 	for k := range s.panes {
 		s.panes[k].box = size{cols: s.cols, rows: thumbRows}
 	}
@@ -69,10 +70,14 @@ func (s *strip) view(w, pos, n int) string {
 		p := pos - thumbN/2 + k
 		cells = append(cells, s.cell(k, k == thumbN/2, p >= 0 && p < n))
 	}
-	left, right := arrow(pos > 0, "<"), arrow(pos < n-1, ">")
-	row := lipgloss.JoinHorizontal(lipgloss.Top, append(append([]string{left}, cells...), right)...)
-	row = lipgloss.PlaceHorizontal(w-2, lipgloss.Center, row)
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Width(w).Render(row)
+	left, right := arrow(pos > 0, "‹"), arrow(pos < n-1, "›")
+	strip := lipgloss.JoinHorizontal(lipgloss.Top, append(append([]string{left}, cells...), right)...)
+	strip = lipgloss.PlaceHorizontal(w-2, lipgloss.Center, strip)
+	note := ""
+	if n > 0 {
+		note = fmt.Sprintf("%d / %d", pos+1, n)
+	}
+	return panel{title: "scenes", note: note}.render(w, 0, strip)
 }
 
 // arrow is a one-cell column, vertically centred.
@@ -80,19 +85,24 @@ func arrow(on bool, glyph string) string {
 	if !on {
 		glyph = " "
 	}
-	return lipgloss.Place(1, thumbRows, lipgloss.Left, lipgloss.Center, glyph)
+	return lipgloss.Place(1, thumbRows, lipgloss.Left, lipgloss.Center, dim.Render(glyph))
 }
 
-// cell is thumbnail k with a gutter either side, highlighted for the current one.
+// cell is thumbnail k with a gutter either side; the current one's gutters are accent bars.
 func (s *strip) cell(k int, current, real bool) string {
 	img := ""
 	if p := s.panes[k]; real && p.shown != "" {
 		img = strings.TrimSuffix(p.view(), "\n")
 	}
-	gutter := strings.TrimSuffix(strings.Repeat(" \n", thumbRows), "\n")
+	l, r := gutter(" "), gutter(" ")
 	if current {
-		gutter = strings.TrimSuffix(strings.Repeat(selected.Render(" ")+"\n", thumbRows), "\n")
+		l, r = gutter(accentText.Render("▐")), gutter(accentText.Render("▌"))
 	}
 	body := lipgloss.Place(s.cols, thumbRows, lipgloss.Center, lipgloss.Center, img)
-	return lipgloss.JoinHorizontal(lipgloss.Top, gutter, body, gutter)
+	return lipgloss.JoinHorizontal(lipgloss.Top, l, body, r)
+}
+
+// gutter is a one-cell column of glyph, as tall as a thumbnail.
+func gutter(glyph string) string {
+	return strings.TrimSuffix(strings.Repeat(glyph+"\n", thumbRows), "\n")
 }

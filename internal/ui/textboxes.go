@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
@@ -12,15 +13,10 @@ import (
 )
 
 const (
-	boxRows = 5 // lines of text each box shows
+	boxRows = 9 // lines of text each box shows
 
 	dialogueBox = 0 // which box has focus
 	detailsBox  = 1
-)
-
-var (
-	focusBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62"))
-	plainBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 )
 
 // textBoxes are the two scrolling boxes under the image: the dialogue list
@@ -57,46 +53,85 @@ func (t *textBoxes) widths() (left, right int) { return t.w / 2, t.w - t.w/2 }
 // changed scene scrolls the list to it and the details to the top.
 func (t *textBoxes) show(hits []core.Hit, idx []int, cur int, changed bool) {
 	if len(hits) == 0 {
-		t.list.SetContent(dim.Render("no scenes"))
+		t.list.SetContent(dim.Render("  no scenes"))
 		t.details.SetContent("")
 		return
 	}
+	w := t.list.Width()
 	var rows []string
 	at := 0
 	for p, i := range idx {
 		h := hits[i]
-		line := lipgloss.NewStyle().MaxWidth(t.list.Width()).Render(fmt.Sprintf("%-7s %s", Clock(h.Scene.Start), firstLine(h)))
 		if i == cur {
-			line, at = selected.Render(line), p
+			rows, at = append(rows, row(fmt.Sprintf("%-7s %s", Clock(h.Scene.Start), firstLine(h)), w, true)), p
+			continue
 		}
-		rows = append(rows, line)
+		rows = append(rows, "  "+timeText.Render(fmt.Sprintf("%-7s", Clock(h.Scene.Start)))+" "+truncate(firstLine(h), max(w-10, 1)))
 	}
 	t.list.SetContentLines(rows)
-	h, s := hits[cur], hits[cur].Scene
-	info := fmt.Sprintf("%d/%d  %s – %s  %s", at+1, len(idx), Clock(s.Start), Clock(s.End), dim.Render(fmt.Sprintf("%.0fs", (s.End-s.Start).Seconds())))
-	t.details.SetContent(lipgloss.NewStyle().Width(max(t.details.Width(), 1)).Render(info + "\n" + h.Translation))
+	t.details.SetContent(sceneText(hits[cur], max(t.details.Width()-2, 1), t.details.Height()))
 	if changed {
 		t.list.SetYOffset(max(at-boxRows/2, 0))
 		t.details.GotoTop()
 	}
 }
 
-// view draws both boxes, the focused one outlined, and bar under the list if set.
-func (t *textBoxes) view(bar string) string {
+// sceneText is a scene's original text beside its translation, w cells in all,
+// split by a faint rule at least minRows tall.
+func sceneText(h core.Hit, w, minRows int) string {
+	if strings.TrimSpace(h.Subtitle+h.Text+h.Translation) == "" {
+		return dim.Render(" no text in this scene")
+	}
+	half := max((w-1)/2, 4)
+	orig := labelled(half, "subtitle", h.Subtitle, "speech", h.Text)
+	if orig == "" {
+		orig = dim.Render(" no original text")
+	}
+	tran := labelled(w-1-half, "english", h.Translation)
+	if tran == "" {
+		tran = dim.Render(" no translation")
+	}
+	rows := max(lipgloss.Height(orig), lipgloss.Height(tran), minRows)
+	rule := lipgloss.NewStyle().Foreground(faint).Render(strings.TrimSuffix(strings.Repeat("│\n", rows), "\n"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.NewStyle().Width(half).Render(orig), rule, tran)
+}
+
+// labelled is each non-empty text of name/text pairs under its label, wrapped to w cells.
+func labelled(w int, pairs ...string) string {
+	wrap := lipgloss.NewStyle().Width(w).PaddingLeft(1)
+	var parts []string
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if t := strings.TrimSpace(pairs[i+1]); t != "" {
+			parts = append(parts, label.Render(" "+pairs[i])+"\n"+wrap.Render(t))
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// view draws both boxes, the focused one in the accent, and bar under the list if set.
+func (t *textBoxes) view(bar, note string) string {
 	left, right := t.widths()
 	l := t.list.View()
 	if bar != "" {
 		l += "\n" + bar
 	}
-	style := func(f int) lipgloss.Style {
-		if t.focus == f {
-			return focusBorder
-		}
-		return plainBorder
-	}
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		style(dialogueBox).Width(left).Render(l),
-		style(detailsBox).Width(right).Render(t.details.View()))
+		panel{title: "dialogue", note: note, focus: t.focus == dialogueBox}.render(left, 0, l),
+		panel{title: "text", note: overflow(t.details), focus: t.focus == detailsBox}.render(right, 0, t.details.View()))
+}
+
+// overflow marks which way a box has more text than it shows, or is empty if it all fits.
+func overflow(v viewport.Model) string {
+	up, down := !v.AtTop(), !v.AtBottom()
+	switch {
+	case up && down:
+		return accentText.Render("↑↓ more")
+	case up:
+		return accentText.Render("↑ more")
+	case down:
+		return accentText.Render("↓ more")
+	}
+	return ""
 }
 
 // toggle moves focus to the other box.

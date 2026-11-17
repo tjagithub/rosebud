@@ -29,9 +29,9 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 		o(&cfg)
 	}
 	if cfg.lib == nil {
-		return &Model{help: help.New(), stack: []Screen{newSearch(src, limit, cfg)}}
+		return &Model{help: newHelp(), stack: []Screen{newSearch(src, limit, cfg)}}
 	}
-	return &Model{help: help.New(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cmp.Or(f.Bundle, cfg.bundle)) })}}
+	return &Model{help: newHelp(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cmp.Or(f.Bundle, cfg.bundle)) })}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.
@@ -139,7 +139,7 @@ func (m *Model) View() tea.View {
 	if km, ok := m.top().(help.KeyMap); ok {
 		out += m.help.View(km)
 	}
-	out += "\n" + statusBar(m.size.Width, m.crumbs(), depthLabel(len(m.stack)+len(m.overlays)))
+	out += "\n" + statusBar(m.size.Width, m.crumbs(), m.status())
 	for _, o := range m.overlays {
 		out = over(out, o.View())
 	}
@@ -173,6 +173,24 @@ func (m *Model) top() Screen {
 // body is the window size left for a screen once the help line and status bar are taken.
 func (m *Model) body() tea.WindowSizeMsg {
 	return tea.WindowSizeMsg{Width: m.size.Width, Height: max(m.size.Height-2, 1)}
+}
+
+// newHelp is the key help line in the theme's colours.
+func newHelp() help.Model {
+	h := help.New()
+	h.Styles = helpStyles()
+	return h
+}
+
+// status is what the topmost screen or overlay with something to say says.
+func (m *Model) status() string {
+	all := append(append([]Screen{}, m.stack...), m.overlays...)
+	for i := len(all) - 1; i >= 0; i-- {
+		if s, ok := all[i].(Statuser); ok {
+			return s.Status()
+		}
+	}
+	return ""
 }
 
 // crumbs are the titles of the screens and overlays, shallowest first.

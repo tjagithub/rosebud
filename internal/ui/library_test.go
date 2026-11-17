@@ -54,7 +54,13 @@ func TestLibraryListsFilmsWithSceneCounts(t *testing.T) {
 		films:  []core.Film{{ID: "a", Title: "Sonatine", Duration: 94 * time.Minute}, {ID: "b", Title: "Short"}},
 		scenes: map[core.FilmID]int{"a": 294, "b": 1},
 	})
-	tui.Screen().Contains("Sonatine", "1:34:00", "294 scenes", "Short", "1 scene")
+	tui.Screen().Contains("Sonatine", "1:34:00", "294 scenes", "Short", "1 scene", "2 films")
+	tui.Screen().Contains("–") // Short has no known length
+}
+
+func TestSceneScreenNamesTheFilmInTheStatusBar(t *testing.T) {
+	tui := filmWithMedia(t)
+	tui.Screen().Contains("films › scene 1", "Sonatine")
 }
 
 func TestLibrarySlashOpensSearchAndEscReturns(t *testing.T) {
@@ -75,7 +81,7 @@ func TestLibraryShowsErrorAndEmptyHint(t *testing.T) {
 	tui, _ := library(t, fakeLib{err: errors.New("db gone")})
 	tui.Screen().Contains("db gone")
 	tui, _ = library(t, fakeLib{})
-	tui.Screen().Contains("rose scenes")
+	tui.Screen().Contains("No films yet", "rose build FILE")
 }
 
 func TestLibraryShowsKeyHelp(t *testing.T) {

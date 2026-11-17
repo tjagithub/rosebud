@@ -72,6 +72,7 @@ func newLibrary(lib Library, search func() Screen, open func(core.Film) Screen) 
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
+	l.SetShowFilter(false) // the screen draws the filter box in the header row
 	scr := &libraryScreen{lib: lib, search: search, open: open, list: l, keys: libraryKeys{
 		focus:  key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "menu/films")),
 		open:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open film")),
@@ -133,43 +134,15 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		l.w, l.h = msg.Width, msg.Height
-		l.list.SetSize(max(msg.Width-menuWidth-2, 10), max(msg.Height-2, 1))
+		l.list.SetSize(l.filmsWidth()-2, max(msg.Height-3, 1))
 		return l, nil
 	case filmsMsg:
-		l.err = msg.Err
-		items := make([]list.Item, len(msg.Films))
-		cmds := make([]tea.Cmd, 0, len(msg.Films)+1)
-		for i, f := range msg.Films {
-			items[i] = filmItem{Film: f}
-			cmds = append(cmds, l.count(f.ID))
-		}
-		return l, tea.Batch(append(cmds, l.list.SetItems(items))...)
+		return l, l.setFilms(msg)
 	case countMsg:
-		for i, it := range l.list.Items() {
-			if f := it.(filmItem); f.ID == msg.Film {
-				f.scenes, f.known = msg.N, true
-				return l, l.list.SetItem(i, f)
-			}
-		}
-		return l, nil
+		return l, l.setCount(msg)
 	case tea.KeyPressMsg:
-		if l.list.FilterState() == list.Unfiltered && msg.String() == "tab" {
-			l.inMenu = !l.inMenu
-			return l, nil
-		}
-		if l.inMenu {
-			if key.Matches(msg, l.keys.search) {
-				return l, Push(l.search())
-			}
-			return l, l.menu.update(msg)
-		}
-		if l.list.FilterState() == list.Unfiltered && key.Matches(msg, l.keys.search) {
-			return l, Push(l.search())
-		}
-		if msg.String() == "enter" && l.list.FilterState() != list.Filtering {
-			if f, ok := l.list.SelectedItem().(filmItem); ok {
-				return l, Push(l.open(f.Film))
-			}
+		if cmd, done := l.onKey(msg); done {
+			return l, cmd
 		}
 	}
 	var cmd tea.Cmd
@@ -177,27 +150,81 @@ func (l *libraryScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return l, cmd
 }
 
+// setFilms lists the films and starts counting their scenes.
+func (l *libraryScreen) setFilms(msg filmsMsg) tea.Cmd {
+	l.err = msg.Err
+	items := make([]list.Item, len(msg.Films))
+	cmds := make([]tea.Cmd, 0, len(msg.Films)+1)
+	for i, f := range msg.Films {
+		items[i] = filmItem{Film: f}
+		cmds = append(cmds, l.count(f.ID))
+	}
+	return tea.Batch(append(cmds, l.list.SetItems(items))...)
+}
+
+// setCount fills in one film's scene count.
+func (l *libraryScreen) setCount(msg countMsg) tea.Cmd {
+	for i, it := range l.list.Items() {
+		if f := it.(filmItem); f.ID == msg.Film {
+			f.scenes, f.known = msg.N, true
+			return l.list.SetItem(i, f)
+		}
+	}
+	return nil
+}
+
+// onKey handles the keys the screen keeps for itself; done is false for keys
+// the list should have.
+func (l *libraryScreen) onKey(msg tea.KeyPressMsg) (cmd tea.Cmd, done bool) {
+	free := l.list.FilterState() == list.Unfiltered
+	switch {
+	case free && msg.String() == "tab":
+		l.inMenu = !l.inMenu
+		return nil, true
+	case (free || l.inMenu) && key.Matches(msg, l.keys.search):
+		return Push(l.search()), true
+	case l.inMenu:
+		return l.menu.update(msg), true
+	case msg.String() == "enter" && l.list.FilterState() != list.Filtering:
+		if f, ok := l.list.SelectedItem().(filmItem); ok {
+			return Push(l.open(f.Film)), true
+		}
+	}
+	return nil, false
+}
+
+// filmsWidth is the outer width of the films panel.
+func (l *libraryScreen) filmsWidth() int { return max(l.w-menuWidth, 24) }
+
 func (l *libraryScreen) View() string {
-	films := ""
+	h := max(l.h, 3)
+	menu := panel{title: "rosebud", focus: l.inMenu}.render(menuWidth, h, l.menu.view(l.inMenu, menuWidth-2))
+	films := panel{title: "films", note: l.Status(), focus: !l.inMenu}.render(l.filmsWidth(), h, l.filmsBody())
+	return lipgloss.JoinHorizontal(lipgloss.Top, menu, films)
+}
+
+// filmsBody is the column header, or the filter box while filtering, over the list.
+func (l *libraryScreen) filmsBody() string {
 	switch {
 	case l.err != nil:
-		films = "error: " + l.err.Error()
+		return errorText.Render("error: ") + l.err.Error()
 	case len(l.list.Items()) == 0:
-		films = dim.Render("no films yet: run `rose scenes FILE`")
-	default:
-		films = l.list.View()
+		return dim.Render("\n  No films yet.\n\n  Make one with ") + strong.Render("rose build FILE")
 	}
-	h := max(l.h, 3)
-	box := func(focus bool, w int) lipgloss.Style {
-		s := plainBorder
-		if focus {
-			s = focusBorder
-		}
-		return s.Width(w).Height(h).MaxHeight(h)
+	head := header.Render(filmColumns(l.list.Width(), "title", "length", "scenes"))
+	if l.list.FilterState() != list.Unfiltered {
+		head = "  " + l.list.FilterInput.View()
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		box(l.inMenu, menuWidth).Render(l.menu.view(l.inMenu)),
-		box(!l.inMenu, max(l.w-menuWidth, 12)).Render(films))
+	return head + "\n" + l.list.View()
+}
+
+// Status is how many films there are.
+func (l *libraryScreen) Status() string { return plural(len(l.list.Items()), "film") }
+
+// filmColumns lays out one film line w cells wide: a title, then right-aligned columns.
+func filmColumns(w int, title, length, scenes string) string {
+	tw := max(w-2-9-2-10, 8)
+	return fmt.Sprintf("  %-*s %8s  %10s", tw, truncate(title, tw), length, scenes)
 }
 
 // filmRow draws a film as one line.
@@ -208,13 +235,12 @@ func (filmRow) Spacing() int                        { return 0 }
 func (filmRow) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
 func (filmRow) Render(w io.Writer, m list.Model, i int, it list.Item) {
 	f := it.(filmItem)
-	title := max(m.Width()-9-2-10-2, 8)
-	line := fmt.Sprintf("%-*s %9s  %s", title, truncate(f.Title, title), Clock(f.Duration), scenesLabel(f))
-	line = lipgloss.NewStyle().MaxWidth(max(m.Width(), 20)).Render(line)
-	if i == m.Index() {
-		line = selected.Render(line)
+	length := "–"
+	if f.Duration > 0 {
+		length = Clock(f.Duration)
 	}
-	_, _ = io.WriteString(w, line)
+	line := filmColumns(m.Width(), f.Title, length, scenesLabel(f))[2:]
+	_, _ = io.WriteString(w, row(line, m.Width(), i == m.Index()))
 }
 
 func scenesLabel(f filmItem) string {
@@ -223,11 +249,17 @@ func scenesLabel(f filmItem) string {
 		return "…"
 	case f.scenes < 0:
 		return "?"
-	case f.scenes == 1:
-		return "1 scene"
 	default:
-		return fmt.Sprintf("%d scenes", f.scenes)
+		return plural(f.scenes, "scene")
 	}
+}
+
+// plural is n and the noun, with an s unless n is 1.
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 var _ help.KeyMap = (*libraryScreen)(nil)

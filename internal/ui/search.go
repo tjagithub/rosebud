@@ -104,35 +104,48 @@ func (m *searchScreen) search() tea.Cmd {
 	}
 }
 
-var (
-	dim      = lipgloss.NewStyle().Faint(true)
-	selected = lipgloss.NewStyle().Bold(true).Reverse(true)
-)
-
 func (m *searchScreen) View() string {
-	var b strings.Builder
-	b.WriteString(m.input.View() + "\n\n")
-	if m.err != nil {
-		b.WriteString("error: " + m.err.Error() + "\n")
-	}
 	w := max(m.width, 20)
-	for i, h := range m.hits {
-		line := fmt.Sprintf("%7s  %s", Clock(h.Scene.Start), oneLine(h))
-		line = lipgloss.NewStyle().MaxWidth(w).Render(line)
-		if i == m.sel {
-			line = selected.Render(line)
-		}
-		b.WriteString(line + "\n")
-	}
+	out := []string{" " + m.input.View(), panel{title: "results", note: m.Status(), focus: true}.render(w, 0, m.results(w-2))}
 	if m.sel < len(m.hits) {
 		h := m.hits[m.sel]
-		b.WriteString("\n" + dim.Render(strings.Repeat("─", w)) + "\n")
+		body := columns(w-4, original(h), h.Translation)
 		if m.fr.shown != "" {
-			b.WriteString(m.fr.view())
+			body = strings.TrimSuffix(m.fr.view(), "\n") + "\n" + body
 		}
-		b.WriteString(columns(w, original(h), h.Translation) + "\n")
+		out = append(out, panel{title: "scene", note: Clock(h.Scene.Start)}.render(w, 0, " "+body))
 	}
-	return b.String()
+	return strings.Join(out, "\n")
+}
+
+// results are the hit lines w cells wide, or why there are none.
+func (m *searchScreen) results(w int) string {
+	q := strings.TrimSpace(m.input.Value())
+	switch {
+	case m.err != nil:
+		return errorText.Render(" error: ") + m.err.Error()
+	case q == "":
+		return dim.Render(" Type to search the dialogue, subtitles and translations of every film.")
+	case len(m.hits) == 0:
+		return dim.Render(" No scenes match ") + strong.Render("“"+q+"”")
+	}
+	lines := make([]string, len(m.hits))
+	for i, h := range m.hits {
+		if i == m.sel {
+			lines[i] = row(fmt.Sprintf("%7s  %s", Clock(h.Scene.Start), oneLine(h)), w, true)
+			continue
+		}
+		lines[i] = "  " + timeText.Render(fmt.Sprintf("%7s", Clock(h.Scene.Start))) + "  " + truncate(oneLine(h), max(w-11, 1))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Status is how many scenes the search found.
+func (m *searchScreen) Status() string {
+	if strings.TrimSpace(m.input.Value()) == "" {
+		return ""
+	}
+	return plural(len(m.hits), "scene")
 }
 
 // oneLine is the first of a hit's translation, subtitle and text that has any.
@@ -170,7 +183,7 @@ func columns(w int, left, right string) string {
 	half := max((w-3)/2, 8)
 	l := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(left))
 	r := lipgloss.NewStyle().Width(half).Render(strings.TrimSpace(right))
-	return lipgloss.JoinHorizontal(lipgloss.Top, l, dim.Render(" │ "), r)
+	return lipgloss.JoinHorizontal(lipgloss.Top, l, lipgloss.NewStyle().Foreground(faint).Render(" │ "), r)
 }
 
 func (m *searchScreen) Title() string { return "search" }

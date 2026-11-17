@@ -109,11 +109,12 @@ func (t *timecode) digit(d int) {
 func (t *timecode) View() string {
 	parts := make([]string, len(t.part))
 	for i, v := range t.part {
-		parts[i] = fmt.Sprintf("%02d", v)
+		parts[i] = timeText.Render(fmt.Sprintf("%02d", v))
 		if i == t.at {
-			parts[i] = selected.Render(parts[i])
+			parts[i] = marker.Bold(true).Render(fmt.Sprintf("%02d", v))
 		}
 	}
-	line := strings.Join(parts, ":")
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 2).Render(line + "\n" + dim.Render(fmt.Sprintf("HH:MM:SS:FF at %d fps", t.fps)))
+	line := strings.Join(parts, dim.Render(":"))
+	body := lipgloss.NewStyle().Padding(1, 3).Render(line + "\n\n" + dim.Render("HH MM SS FF"))
+	return panel{title: "go to time", note: fmt.Sprintf("%d fps", t.fps), accent: true}.fit(body)
 }

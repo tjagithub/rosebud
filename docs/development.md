@@ -57,5 +57,7 @@ Run tests with `-race` when you touch goroutines: `go test -race ./...`.
 - `--debug` on `ocr` and `translate` prints each command and how long it took.
 - `ROSE_PLAY_TRACE=/tmp/trace.log` logs the timing of each playback frame.
   `ROSE_PLAY_FPS=12` overrides the playback rate.
+- `ROSE_SNAP_DIR=/path/to/films go test ./internal/ui -run Snapshot -v` prints every
+  TUI screen of a real library as text, for checking layout changes.
 - `ROSE_<KEY>` sets any setting for one run, for example
   `ROSE_FFMPEG_HWACCEL=none rose scenes FILE`.

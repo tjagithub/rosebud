@@ -128,55 +128,83 @@ func pump(ctx context.Context, pb playback, enc func(player.Frame) playFrameMsg,
 	}()
 	go func() {
 		defer close(out)
-		for tick := time.NewTicker(10 * time.Millisecond); len(order) < cap(order) && ctx.Err() == nil; {
-			select {
-			case <-tick.C:
-			case <-read:
-				tick.Stop()
-				goto play
-			}
+		if !waitPrimed(ctx, order, read) {
+			return
 		}
-	play:
 		_ = pb.StartAudio()
-		start, step := time.Now(), time.Duration(float64(time.Second)/fps)
-		for i := 0; ; i++ {
-			var r chan playFrameMsg
-			var ok bool
-			select {
-			case r, ok = <-order:
-			case <-ctx.Done():
-				return
-			}
-			if !ok {
-				return
-			}
-			var m playFrameMsg
-			select {
-			case m = <-r:
-			case <-ctx.Done():
-				return
-			}
-			late := time.Since(start) - time.Duration(i)*step
-			if late >= step {
-				continue
-			}
-			if late < 0 {
-				select {
-				case <-time.After(-late):
-				case <-ctx.Done():
-					return
-				}
-			}
-			ready := time.Since(start) - time.Duration(i)*step
-			select {
-			case out <- m:
-			case <-ctx.Done():
-				return
-			}
-			traceFrame("pump", i, ready, time.Since(start)-time.Duration(i)*step)
-		}
+		pace(ctx, order, out, fps)
 	}()
 	return out
+}
+
+// waitPrimed waits until order is full or the reader has ended, so playback
+// starts with frames in hand. It is false if ctx ends first.
+func waitPrimed(ctx context.Context, order chan chan playFrameMsg, read <-chan struct{}) bool {
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for len(order) < cap(order) {
+		select {
+		case <-tick.C:
+		case <-read:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+	return true
+}
+
+// pace hands out the frames in order at fps, timed from the first. A frame a
+// whole step late is dropped.
+func pace(ctx context.Context, order <-chan chan playFrameMsg, out chan<- playFrameMsg, fps float64) {
+	start, step := time.Now(), time.Duration(float64(time.Second)/fps)
+	for i := 0; ; i++ {
+		r, ok := recv(ctx, order)
+		if !ok {
+			return
+		}
+		m, ok := recv(ctx, r)
+		if !ok {
+			return
+		}
+		late := func() time.Duration { return time.Since(start) - time.Duration(i)*step }
+		behind := late()
+		if behind >= step {
+			continue
+		}
+		if behind < 0 && !sleep(ctx, -behind) {
+			return
+		}
+		ready := late()
+		select {
+		case out <- m:
+		case <-ctx.Done():
+			return
+		}
+		traceFrame("pump", i, ready, late())
+	}
+}
+
+// recv takes the next value from c; ok is false once c is closed or ctx ends.
+func recv[T any](ctx context.Context, c <-chan T) (v T, ok bool) {
+	select {
+	case v, ok = <-c:
+		return v, ok
+	case <-ctx.Done():
+		return v, false
+	}
+}
+
+// sleep waits d, and is false if ctx ends first.
+func sleep(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // next waits for the picture after the last of the playback in progress.

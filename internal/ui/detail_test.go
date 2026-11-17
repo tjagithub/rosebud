@@ -19,16 +19,29 @@ func TestEnterOpensSceneDetailAndEscReturns(t *testing.T) {
 	tui, _ := start(t, &fakeSearch{hits: []core.Hit{h}})
 	tui.Type("x")
 	tui.Press("enter")
-	tui.Screen().Contains("scene 7", "1:05 – 1:11", "6s", "字幕", "I'll kill you!", "level 2")
+	tui.Screen().Contains("scene 7", "1:05 – 1:11", "6s", "字幕", "I'll kill you!", "search › scene 7")
 	tui.Press("esc")
 	tui.Screen().Contains("search:")
 	tui.Screen().Lacks("scene 7")
 }
 
+func TestSceneTextSetsOriginalBesideTranslation(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: []core.Hit{hit(7, 65*time.Second, "I'll kill you!")}})
+	tui.Type("x")
+	tui.Press("enter")
+	for _, line := range strings.Split(tui.Screen().String(), "\n") {
+		if i, j := strings.Index(line, "subtitle"), strings.Index(line, "english"); i >= 0 && j > i {
+			return
+		}
+	}
+	t.Errorf("want the subtitle and english labels side by side:\n%s", tui.Screen())
+}
+
 func TestEnterWithNoHitsDoesNothing(t *testing.T) {
 	tui, _ := start(t, &fakeSearch{})
 	tui.Press("enter")
-	tui.Screen().Contains("search:", "level 1")
+	tui.Screen().Contains("search:")
+	tui.Screen().Lacks("›")
 }
 
 func TestDetailUploadsItsFrameInItsOwnSlot(t *testing.T) {
@@ -49,17 +62,42 @@ func TestDetailUploadsItsFrameInItsOwnSlot(t *testing.T) {
 	tui.Screen().Contains(string(rune(0x10EEEE)))
 }
 
+func TestCommaAndPeriodStepOneAngleBracketsStepFive(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(12)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type(".")
+	tui.Screen().Contains("scene 2", "2 / 12")
+	tui.Type(">")
+	tui.Screen().Contains("scene 7", "7 / 12")
+	tui.Type(",")
+	tui.Screen().Contains("scene 6", "6 / 12")
+	tui.Type("<")
+	tui.Screen().Contains("scene 1", "1 / 12")
+	tui.Screen().Contains(",/.", "</>")
+}
+
+func TestBigStepsStopAtTheEnds(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: manyHits(7)})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Type("<")
+	tui.Screen().Contains("scene 1", "1 / 7")
+	tui.Type(">>")
+	tui.Screen().Contains("scene 7", "7 / 7")
+}
+
 func TestDetailStepsBetweenHitsWithinBounds(t *testing.T) {
 	hits := []core.Hit{hit(1, time.Second, "first"), hit(2, 2*time.Second, "second"), hit(3, 3*time.Second, "third")}
 	tui, _ := start(t, &fakeSearch{hits: hits})
 	tui.Type("x")
 	tui.Press("enter")
 	tui.Press("left")
-	tui.Screen().Contains("scene 1", "1/3", "first")
+	tui.Screen().Contains("scene 1", "1 / 3", "first")
 	tui.Press("right")
 	tui.Press("right")
 	tui.Press("right")
-	tui.Screen().Contains("scene 3", "3/3", "third")
+	tui.Screen().Contains("scene 3", "3 / 3", "third")
 	tui.Screen().Lacks("first")
 }
 
@@ -83,14 +121,15 @@ func TestDetailFillsTheBodyAndSizesImageToIt(t *testing.T) {
 	dir := bundleWithFrames(t, "a.jpg")
 	f := &fakeSearch{hits: []core.Hit{withFrame(hit(1, time.Second, "one"), "frames/a.jpg")}}
 	tui := uitest.New(t, ui.New(f, 10, ui.WithBundle(dir)))
+	tui.Send(tea.WindowSizeMsg{Width: 100, Height: 40})
 	tui.Type("x")
 	tui.Press("enter")
 	lines := strings.Split(tui.Screen().String(), "\n")
-	if len(lines) != 24 {
-		t.Fatalf("screen is %d lines, want 24", len(lines))
+	if len(lines) != 40 {
+		t.Fatalf("screen is %d lines, want 40", len(lines))
 	}
-	if !strings.HasPrefix(lines[0], "╭") || !strings.HasPrefix(lines[4], "╰") {
-		t.Errorf("a boxed thumbnail strip should open the screen: %q", lines[:5])
+	if !strings.HasPrefix(lines[0], "╭") || !strings.HasPrefix(lines[8], "╰") {
+		t.Errorf("a boxed thumbnail strip, 7 rows inside, should open the screen: %q", lines[:9])
 	}
 	n := strings.Count(tui.Screen().String(), string(rune(0x10EEEE)))
 	if n < 40 {
@@ -143,6 +182,30 @@ func TestArrowsScrollTheFocusedBox(t *testing.T) {
 	tui.Screen().Contains("0:20", "scene 1")
 }
 
+func TestTextBoxShowsWhenItHasMoreAboveOrBelow(t *testing.T) {
+	h := hit(1, time.Second, "short")
+	h.Translation = strings.Repeat("a long line of translation ", 40)
+	tui, _ := start(t, &fakeSearch{hits: []core.Hit{h}})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Screen().Contains("↓ more")
+	tui.Press("tab")
+	tui.Press("down")
+	tui.Screen().Contains("↑↓ more")
+	for range 200 {
+		tui.Press("down")
+	}
+	tui.Screen().Contains("↑ more")
+	tui.Screen().Lacks("↓ more", "↑↓")
+}
+
+func TestTextBoxFittingItsTextHasNoMoreMark(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{hits: []core.Hit{hit(1, time.Second, "short")}})
+	tui.Type("x")
+	tui.Press("enter")
+	tui.Screen().Lacks("more")
+}
+
 func TestWheelScrollsTheBoxUnderThePointer(t *testing.T) {
 	tui, _ := start(t, &fakeSearch{hits: manyHits(20)})
 	tui.Type("x")
@@ -167,11 +230,12 @@ func TestSOpensScenePickerAndEnterJumps(t *testing.T) {
 	tui.Type("x")
 	tui.Press("enter")
 	tui.Type("s")
-	tui.Screen().Contains("chapter", "length", "pick scene")
+	tui.Screen().Contains("length", "pick scene")
+	tui.Screen().Lacks("chapter") // the film has no chapters
 	tui.Type("14")
 	tui.Press("enter")
 	tui.Screen().Contains("scene 14")
-	tui.Screen().Lacks("chapter")
+	tui.Screen().Lacks("length")
 }
 
 func TestPickerEscCancels(t *testing.T) {
@@ -181,7 +245,7 @@ func TestPickerEscCancels(t *testing.T) {
 	tui.Type("s")
 	tui.Press("esc")
 	tui.Screen().Contains("scene 1")
-	tui.Screen().Lacks("chapter")
+	tui.Screen().Lacks("length")
 }
 
 func TestTGoesToATimecode(t *testing.T) {
@@ -225,7 +289,14 @@ func filmWithMedia(t *testing.T) *uitest.TUI {
 func TestTimecodeUsesTheFilmsFrameRate(t *testing.T) {
 	tui := filmWithMedia(t)
 	tui.Type("t")
-	tui.Screen().Contains("at 25 fps")
+	tui.Screen().Contains("25 fps")
+}
+
+func TestSearchSaysWhenNothingMatches(t *testing.T) {
+	tui, _ := start(t, &fakeSearch{})
+	tui.Screen().Contains("Type to search")
+	tui.Type("zzz")
+	tui.Screen().Contains("No scenes match", "“zzz”", "0 scenes")
 }
 
 func TestPickerShowsChapterNames(t *testing.T) {

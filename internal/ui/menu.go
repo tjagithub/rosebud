@@ -35,15 +35,13 @@ func (m *menu) update(k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// view draws the items, the current one highlighted when focused.
-func (m *menu) view(focused bool) string {
-	var rows []string
+// view draws the items w cells wide, the current one highlighted when focused.
+func (m *menu) view(focused bool, w int) string {
+	rows := []string{""}
 	for i, it := range m.items {
-		line := " " + it.label + " "
-		if i == m.cur && focused {
-			line = selected.Render(line)
-		} else if i == m.cur {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
+		line := row(it.label, w, i == m.cur && focused)
+		if i == m.cur && !focused {
+			line = "  " + strong.Render(it.label)
 		}
 		rows = append(rows, line)
 	}
@@ -59,5 +57,6 @@ func (n notice) Title() string                    { return n.title }
 func (n notice) ShortHelp() []key.Binding         { return []key.Binding{backKey} }
 func (n notice) FullHelp() [][]key.Binding        { return [][]key.Binding{n.ShortHelp()} }
 func (n notice) View() string {
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 2).Render(n.text)
+	body := lipgloss.NewStyle().Padding(1, 2).Render(n.text)
+	return panel{title: n.title, accent: true}.fit(body)
 }

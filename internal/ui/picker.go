@@ -28,18 +28,31 @@ type picker struct {
 
 func newPicker(d *detailScreen) *picker {
 	p := &picker{owner: d, idx: d.visible()}
+	chapters := len(d.film.Chapters) > 0
 	var rows []table.Row
 	for _, i := range p.idx {
 		s := d.hits[i].Scene
-		rows = append(rows, table.Row{strconv.Itoa(int(s.ID)), truncate(d.chapter(s.Start), 15), Clock(s.Start), fmt.Sprintf("%.0fs", (s.End - s.Start).Seconds())})
+		r := table.Row{strconv.Itoa(int(s.ID)), Clock(s.Start), fmt.Sprintf("%.0fs", (s.End - s.Start).Seconds())}
+		if chapters {
+			r = append(r, truncate(d.chapter(s.Start), 18))
+		}
+		rows = append(rows, r)
+	}
+	cols := []table.Column{{Title: "scene", Width: 7}, {Title: "time", Width: 9}, {Title: "length", Width: 7}}
+	if chapters {
+		cols = append(cols, table.Column{Title: "chapter", Width: 18})
+	}
+	width := 0
+	for _, c := range cols {
+		width += c.Width + 2
 	}
 	st := table.DefaultStyles()
 	st.Selected = selected
-	st.Cell = lipgloss.NewStyle().Padding(0, 1)
-	st.Header = lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	st.Cell = lipgloss.NewStyle().Padding(0, 1).Foreground(ink)
+	st.Header = header.Padding(0, 1).BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).BorderForeground(faint)
 	p.tbl = table.New(
-		table.WithColumns([]table.Column{{Title: "scene", Width: 7}, {Title: "chapter", Width: 15}, {Title: "time", Width: 9}, {Title: "length", Width: 7}}),
-		table.WithRows(rows), table.WithStyles(st), table.WithFocused(true), table.WithWidth(50), table.WithHeight(12),
+		table.WithColumns(cols),
+		table.WithRows(rows), table.WithStyles(st), table.WithFocused(true), table.WithWidth(width), table.WithHeight(12),
 	)
 	p.tbl.SetCursor(d.pos())
 	return p
@@ -100,9 +113,10 @@ func (p *picker) goTo() {
 }
 
 func (p *picker) View() string {
-	foot := dim.Render("scene: " + p.typed + "▏")
-	if p.typed == "" {
-		foot = dim.Render("type a scene number")
+	foot := dim.Render("type a scene number")
+	if p.typed != "" {
+		foot = dim.Render("scene ") + strong.Render(p.typed) + accentText.Render("▏")
 	}
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(p.tbl.View() + "\n" + foot)
+	body := lipgloss.NewStyle().Padding(0, 1).Render(p.tbl.View() + "\n\n" + foot)
+	return panel{title: "scenes", note: plural(len(p.idx), "scene"), accent: true}.fit(body)
 }

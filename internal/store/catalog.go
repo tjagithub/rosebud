@@ -32,15 +32,29 @@ func New(ctx context.Context, db *sql.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// PutFilm inserts a film or updates the one with the same ID.
+// PutFilm inserts a film or updates the one with the same ID. An unknown
+// length or source keeps the stored one; the spoken language is set by SetSpoken.
 func (s *Store) PutFilm(ctx context.Context, f core.Film) error {
 	_, err := s.db.ExecContext(ctx, `
-		insert into films(id, title, year, bundle, duration_ns) values (?, ?, ?, ?, ?)
+		insert into films(id, title, year, bundle, duration_ns, source) values (?, ?, ?, ?, ?, ?)
 		on conflict(id) do update set
-			title = excluded.title, year = excluded.year,
-			bundle = excluded.bundle, duration_ns = excluded.duration_ns`,
-		f.ID, f.Title, f.Year, f.Bundle, int64(f.Duration))
+			title = excluded.title, year = excluded.year, bundle = excluded.bundle,
+			duration_ns = case when excluded.duration_ns > 0 then excluded.duration_ns else films.duration_ns end,
+			source = case when excluded.source != '' then excluded.source else films.source end`,
+		f.ID, f.Title, f.Year, f.Bundle, int64(f.Duration), f.Source)
 	return err
+}
+
+// SetSpoken records the language spoken in a film, such as "jpn".
+func (s *Store) SetSpoken(ctx context.Context, id core.FilmID, lang string) error {
+	res, err := s.db.ExecContext(ctx, `update films set spoken = ? where id = ?`, lang, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return errors.Join(err, fmt.Errorf("store: no film %q", id))
+	}
+	return nil
 }
 
 // SetMedia records the length, frame rate and chapters of a film. An unknown
@@ -178,7 +192,7 @@ func (s *Store) Films(ctx context.Context) iter.Seq2[core.Film, error] {
 	return query(ctx, s.db, func(r *sql.Rows) (f core.Film, err error) {
 		var dur int64
 		var chapters string
-		err = r.Scan(&f.ID, &f.Title, &f.Year, &f.Bundle, &dur, &f.FPS, &chapters)
+		err = r.Scan(&f.ID, &f.Title, &f.Year, &f.Bundle, &dur, &f.FPS, &chapters, &f.Source, &f.Spoken)
 		f.Duration = time.Duration(dur)
 		if err == nil {
 			err = json.Unmarshal([]byte(chapters), &f.Chapters)
@@ -187,7 +201,7 @@ func (s *Store) Films(ctx context.Context) iter.Seq2[core.Film, error] {
 			f.Chapters = nil
 		}
 		return f, err
-	}, `select id, title, year, bundle, duration_ns, fps, chapters from films order by title, id`)
+	}, `select id, title, year, bundle, duration_ns, fps, chapters, source, spoken from films order by title, id`)
 }
 
 // Scenes lists a film's scenes in time order.

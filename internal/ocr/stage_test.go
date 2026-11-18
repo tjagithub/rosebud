@@ -195,6 +195,38 @@ func TestStageAutoFollowsTheSpokenLanguage(t *testing.T) {
 	}
 }
 
+func TestStageTrackParamPicksExactly(t *testing.T) {
+	dir := t.TempDir()
+	other := filepath.Join(dir, "downloaded.srt")
+	if err := os.WriteFile(other, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for track, want := range map[string]string{"1": "-i f.mkv -map 0:s:1", other: "-i " + other + " -map 0:s:0"} {
+		var ffmpeg string
+		ex := func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if name == "ffmpeg" {
+				ffmpeg = strings.Join(args, " ")
+				return []byte("1\n00:00:01,000 --> 00:00:02,000\nhi\n"), nil
+			}
+			return []byte("2,subrip,jpn\n3,subrip,fra\n"), nil
+		}
+		st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(10)}}}
+		if err := newStage(ex, st, &bandReader{}).Run(t.Context(), spec(map[string]string{"file": "f.mkv", "track": track}), noProgress); err != nil {
+			t.Fatalf("track %s: %v", track, err)
+		}
+		if !strings.Contains(ffmpeg, want) {
+			t.Errorf("track %s: ffmpeg %s, want %s", track, ffmpeg, want)
+		}
+	}
+	for _, bad := range []string{"7", filepath.Join(dir, "missing.srt"), filepath.Join(dir, "notes.txt")} {
+		ex := func(context.Context, string, ...string) ([]byte, error) { return []byte("2,subrip,jpn\n"), nil }
+		st := &memStore{scenes: []core.Scene{{ID: 1, End: sec(10)}}}
+		if err := newStage(ex, st, &bandReader{}).Run(t.Context(), spec(map[string]string{"file": "f.mkv", "track": bad}), noProgress); err == nil || st.set {
+			t.Errorf("track %s: want an error and nothing written, got %v", bad, err)
+		}
+	}
+}
+
 func TestStageNoScenes(t *testing.T) {
 	s := newStage(ffExec("", 0), &memStore{}, &bandReader{})
 	if err := s.Run(t.Context(), spec(map[string]string{"file": "f", "lang": "jpn"}), noProgress); err == nil {

@@ -8,7 +8,7 @@ import (
 )
 
 // migrations[i] upgrades user_version i to i+1. Append only; never edit.
-var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3, toV4, toV5}
+var migrations = []func(context.Context, *sql.Tx) error{toV1, toV2, toV3, toV4, toV5, toV6}
 
 func toV1(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
@@ -92,6 +92,14 @@ func toV5(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `
 alter table films add column fps real not null default 0;
 alter table films add column chapters text not null default '[]'`)
+	return err
+}
+
+// toV6 adds the video file a film was cut from and the language spoken in it.
+func toV6(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+alter table films add column source text not null default '';
+alter table films add column spoken text not null default ''`)
 	return err
 }
 

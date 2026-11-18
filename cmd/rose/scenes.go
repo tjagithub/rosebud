@@ -61,7 +61,7 @@ func scenesCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		film := core.Film{ID: core.FilmID(stem), Title: stem, Bundle: bundle}
+		film := core.Film{ID: core.FilmID(stem), Title: stem, Bundle: bundle, Source: file}
 		if err := st.PutFilm(ctx, film); err != nil {
 			return err
 		}

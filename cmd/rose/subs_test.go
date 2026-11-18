@@ -88,6 +88,32 @@ func TestRun_Subs(t *testing.T) {
 	if !strings.Contains(out.String(), "2 scenes") {
 		t.Errorf("stdout = %q, want a summary naming 2 scenes", out.String())
 	}
+	for f, err := range st.Films(t.Context()) {
+		if err != nil || f.Source != file || f.Spoken != "ja" {
+			t.Errorf("film = %+v, %v; want the source recorded by scenes and the spoken language by subs", f, err)
+		}
+	}
+}
+
+// spokenIn is the spoken language stored in the bundle beside file.
+func spokenIn(t *testing.T, file string) string {
+	t.Helper()
+	db, err := store.Open(filepath.Join(strings.TrimSuffix(file, filepath.Ext(file))+".film", "rose.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	st, err := store.New(t.Context(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for f, err := range st.Films(t.Context()) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f.Spoken
+	}
+	return ""
 }
 
 func TestRun_SubsModelOverride(t *testing.T) {
@@ -155,6 +181,9 @@ func TestRun_SubsListensForTheLanguage(t *testing.T) {
 			err := runSubs(t.Context(), []string{file}, &out, &out, fakeTr(&model))
 			if err != nil || model != tc.wantModel {
 				t.Fatalf("model %q, err %v, want %q", model, err, tc.wantModel)
+			}
+			if got := spokenIn(t, file); got != "ja" {
+				t.Errorf("stored spoken language %q, want the detected ja", got)
 			}
 		})
 	}

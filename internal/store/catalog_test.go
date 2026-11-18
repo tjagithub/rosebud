@@ -71,8 +71,8 @@ func TestNew(t *testing.T) {
 		}
 	}
 	var v int
-	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 5 {
-		t.Errorf("user_version = %d, %v; want 5", v, err)
+	if err := db.QueryRow(`pragma user_version`).Scan(&v); err != nil || v != 6 {
+		t.Errorf("user_version = %d, %v; want 6", v, err)
 	}
 }
 
@@ -462,6 +462,42 @@ func TestStore_ReplaceScenesKeepsTranslation(t *testing.T) {
 	if hitCount(t, s, "hello") != 1 {
 		t.Error("rescan dropped the translation of an unchanged scene")
 	}
+}
+
+func TestStore_SourceAndSpokenLanguage(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	put(t, s, core.Film{ID: "a", Title: "A", Bundle: "/a", Source: "/films/a.webm"})
+	if err := s.SetMedia(ctx, "a", core.Media{Duration: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSpoken(ctx, "a", "jpn"); err != nil {
+		t.Fatal(err)
+	}
+	put(t, s, core.Film{ID: "a", Title: "A", Bundle: "/a", Source: "/films/a.webm"}) // scenes run again
+	f := firstFilm(t, s)
+	if f.Source != "/films/a.webm" || f.Spoken != "jpn" || f.Duration != time.Hour {
+		t.Errorf("film = %+v; a rescan must keep the spoken language and length", f)
+	}
+	put(t, s, core.Film{ID: "a", Title: "A", Bundle: "/a"})
+	if f := firstFilm(t, s); f.Source != "/films/a.webm" {
+		t.Errorf("an unknown source must keep the stored one, got %q", f.Source)
+	}
+	if err := s.SetSpoken(ctx, "nope", "jpn"); err == nil {
+		t.Error("want an error for a film that is not there")
+	}
+}
+
+func firstFilm(t *testing.T, s *store.Store) core.Film {
+	t.Helper()
+	for f, err := range s.Films(context.Background()) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	t.Fatal("no films")
+	return core.Film{}
 }
 
 func TestStore_Media(t *testing.T) {

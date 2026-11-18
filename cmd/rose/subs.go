@@ -58,8 +58,8 @@ func subsCmd(newTr func(model string) subs.Transcriber) *cobra.Command {
 		if _, err := os.Stat(dbPath); err != nil {
 			return fmt.Errorf("no scenes for %s yet: run `rose scenes` first", file)
 		}
+		spoken := *lang
 		if *model == "" {
-			spoken := *lang
 			if spoken == "auto" {
 				if spoken, err = autoLanguage(ctx, file, stderr); err != nil {
 					return err
@@ -84,6 +84,11 @@ func subsCmd(newTr func(model string) subs.Transcriber) *cobra.Command {
 			return err
 		}
 
+		if spoken != "auto" {
+			if err := st.SetSpoken(ctx, core.FilmID(stem), spoken); err != nil {
+				return err
+			}
+		}
 		exec := scenes.NewExec()
 		stage := subs.Stage{
 			Exec: subs.Exec(exec), Store: st, Tr: newTr(*model),

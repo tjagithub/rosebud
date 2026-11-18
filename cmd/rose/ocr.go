@@ -34,6 +34,16 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	return execute(ctx, ocrCmd(newReader), args, stdout, stderr)
 }
 
+// spokenOf is the language stored as spoken in film, or "" if none is.
+func spokenOf(ctx context.Context, st *store.Store, film core.FilmID) string {
+	for f, err := range st.Films(ctx) {
+		if err == nil && f.ID == film {
+			return f.Spoken
+		}
+	}
+	return ""
+}
+
 // trackName is how --verbose names a track: its language, codec and where it is.
 func trackName(tr subsrc.Track) string {
 	where := fmt.Sprintf("track %d", tr.Pos)
@@ -51,6 +61,7 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
 	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")
 	debug := fs.Bool("debug", false, "show the commands run and how long they took")
+	track := fs.String("track", "", "read exactly this: a subtitle track number (the N of 0:s:N) or a subtitle file, overriding --lang")
 	burned := fs.Bool("burned", false, "read subtitles burned into the picture instead of a subtitle track")
 	fps := fs.Int("fps", 2, "with --burned, frames sampled per second")
 	masks := fs.String("masks", "", `with --burned, areas to black out, such as watermarks: "w,h,x,y;..." in pixels or iw/ih expressions`)
@@ -162,7 +173,8 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 		defer func() { _ = eng.Close() }()
 
 		film := core.FilmID(stem)
-		spec := core.JobSpec{Stage: "ocr", Film: film, Params: map[string]string{"file": file, "lang": *lang}}
+		params := map[string]string{"file": file, "lang": *lang, "track": *track, "spoken": spokenOf(ctx, st, film)}
+		spec := core.JobSpec{Stage: "ocr", Film: film, Params: params}
 		if _, err := runJob(ctx, eng, spec, stderr); err != nil {
 			return err
 		}

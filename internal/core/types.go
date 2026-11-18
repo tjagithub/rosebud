@@ -21,6 +21,8 @@ type Film struct {
 	Duration time.Duration
 	FPS      float64   // frames per second of the video; 0 if unknown
 	Chapters []Chapter // in time order; may be empty
+	Source   string    // the video file the scenes were cut from; "" if unknown
+	Spoken   string    // the language spoken in it, such as "jpn"; "" if unknown
 }
 
 // Media is what ffprobe reports about a film's file. Zero values mean unknown.

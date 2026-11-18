@@ -42,6 +42,22 @@ func Sidecars(video string) ([]Track, error) {
 	return out, nil
 }
 
+// File is the track of any subtitle file, named after the video or not.
+func File(path string) (Track, error) {
+	codec, ok := sidecarCodecs[strings.ToLower(filepath.Ext(path))]
+	if !ok {
+		return Track{}, fmt.Errorf("subsrc: %q is not a subtitle file (.srt, .vtt, .ass or .ssa)", path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Track{}, fmt.Errorf("subsrc: %w", err)
+	}
+	if info.IsDir() {
+		return Track{}, fmt.Errorf("subsrc: %s is a folder", path)
+	}
+	return Track{Codec: codec, Path: path}, nil
+}
+
 // nameTags splits the dotted middle of a sidecar's name, "ja.forced", into a
 // language and a title. A part that is neither is taken as the title too.
 func nameTags(mid string) (lang, title string) {

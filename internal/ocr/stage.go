@@ -22,7 +22,9 @@ type Store interface {
 }
 
 // Stage writes the subtitle text of each scene, read straight from a text track
-// or by OCR from a bitmap one. The job's "file" and "lang" params pick the track.
+// or by OCR from a bitmap one. The job's "file" param names the video. "track"
+// picks a track exactly: a subtitle stream number or a subtitle file. Otherwise
+// "lang" picks by language, or "auto" by "spoken", the language spoken in the film.
 type Stage struct {
 	Exec         Exec
 	Store        Store
@@ -36,15 +38,15 @@ type Stage struct {
 // Run is a jobs.Stage. Text is written once, at the end, so a failed or
 // cancelled run leaves the earlier text alone.
 func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, total int64)) error {
-	file, lang := spec.Params["file"], spec.Params["lang"]
-	if file == "" || lang == "" {
-		return errors.New("ocr: needs \"file\" and \"lang\" params")
+	file, lang, track := spec.Params["file"], spec.Params["lang"], spec.Params["track"]
+	if file == "" || lang == "" && track == "" {
+		return errors.New("ocr: needs a \"file\" param, and \"lang\" or \"track\"")
 	}
 	scenes, err := s.scenes(ctx, spec.Film)
 	if err != nil {
 		return err
 	}
-	tr, err := s.track(ctx, file, lang, spec.Params["spoken"])
+	tr, err := s.choose(ctx, file, track, lang, spec.Params["spoken"])
 	if err != nil {
 		return err
 	}
@@ -77,6 +79,27 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 		s.OnIssues(issues)
 	}
 	return s.Store.SetSubtitle(ctx, spec.Film, out)
+}
+
+// choose is the exact track asked for, or else the best for lang.
+func (s Stage) choose(ctx context.Context, file, track, lang, spoken string) (subsrc.Track, error) {
+	if track == "" {
+		return s.track(ctx, file, lang, spoken)
+	}
+	pos, err := strconv.Atoi(track)
+	if err != nil {
+		return subsrc.File(track)
+	}
+	tracks, err := subsrc.Probe(ctx, s.Exec, file, s.ProbeTimeout)
+	if err != nil {
+		return subsrc.Track{}, err
+	}
+	for _, t := range tracks {
+		if t.Pos == pos && t.Kind() != subsrc.Unknown {
+			return t, nil
+		}
+	}
+	return subsrc.Track{}, fmt.Errorf("ocr: %s has no readable subtitle track %d", file, pos)
 }
 
 // track picks the subtitle track for lang from file's own and the subtitle files

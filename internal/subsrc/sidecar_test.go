@@ -48,6 +48,22 @@ func TestSidecarsFindsSubtitleFilesNamedAfterTheVideo(t *testing.T) {
 	}
 }
 
+func TestFileIsAnySubtitleFile(t *testing.T) {
+	dir := t.TempDir()
+	srt := filepath.Join(dir, "Some Name.en.srt")
+	write(t, srt, "")
+	if tr, err := subsrc.File(srt); err != nil || tr != (subsrc.Track{Codec: "subrip", Path: srt}) {
+		t.Errorf("got %+v, %v", tr, err)
+	}
+	txt := filepath.Join(dir, "notes.txt")
+	write(t, txt, "")
+	for _, bad := range []string{txt, filepath.Join(dir, "gone.srt"), dir + "/", ""} {
+		if _, err := subsrc.File(bad); err == nil {
+			t.Errorf("%q: want an error", bad)
+		}
+	}
+}
+
 func TestSidecarsOfAMissingFolderIsAnError(t *testing.T) {
 	if _, err := subsrc.Sidecars(filepath.Join(t.TempDir(), "gone", "f.mkv")); err == nil {
 		t.Error("want an error for a folder that is not there")

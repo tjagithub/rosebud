@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tjagithub/rosebud/internal/core"
+	"github.com/tjagithub/rosebud/internal/store"
 )
 
 func TestRun_OCRRejectsBadInput(t *testing.T) {
@@ -26,6 +29,45 @@ func TestRun_OCRRejectsBadInput(t *testing.T) {
 		var out, errOut bytes.Buffer
 		if err := runOCR(t.Context(), args, &out, &errOut, nil); err == nil {
 			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+func TestRun_OCRUsesTheStoredSpokenLanguageAndTheTrackFlag(t *testing.T) {
+	file := makeTalkie(t)
+	var out, errOut bytes.Buffer
+	if err := run(t.Context(), []string{"scenes", file}, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	dir, stem := filepath.Dir(file), strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	cue := func(text string) []byte { return []byte("1\n00:00:01,000 --> 00:00:02,000\n" + text + "\n") }
+	for name, text := range map[string]string{stem + ".en.srt": "in english", stem + ".ja.srt": "in japanese", "elsewhere.srt": "from elsewhere"} {
+		if err := os.WriteFile(filepath.Join(dir, name), cue(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := store.Open(filepath.Join(dir, stem+".film", "rose.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.New(t.Context(), db)
+	if err == nil {
+		err = st.SetSpoken(t.Context(), core.FilmID(stem), "ja")
+	}
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for args, want := range map[string]string{
+		"--verbose": "jpn subrip from " + stem + ".ja.srt",
+		"--verbose --track " + filepath.Join(dir, "elsewhere.srt"): "subrip from elsewhere.srt",
+	} {
+		errOut.Reset()
+		if err := runOCR(t.Context(), append(strings.Fields(args), file), &out, &errOut, nil); err != nil {
+			t.Fatalf("%s: %v\n%s", args, err, errOut.String())
+		}
+		if !strings.Contains(errOut.String(), "reading ") || !strings.Contains(errOut.String(), want) {
+			t.Errorf("%s: stderr %q, want it to read %q", args, errOut.String(), want)
 		}
 	}
 }

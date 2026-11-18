@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -22,6 +23,7 @@ import (
 	"github.com/tjagithub/rosebud/internal/ocr"
 	"github.com/tjagithub/rosebud/internal/scenes"
 	"github.com/tjagithub/rosebud/internal/store"
+	"github.com/tjagithub/rosebud/internal/subsrc"
 )
 
 const nemotronModel = "mlx-community/Nemotron-Parse-2.0-8bit"
@@ -32,10 +34,19 @@ func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newRea
 	return execute(ctx, ocrCmd(newReader), args, stdout, stderr)
 }
 
+// trackName is how --verbose names a track: its language, codec and where it is.
+func trackName(tr subsrc.Track) string {
+	where := fmt.Sprintf("track %d", tr.Pos)
+	if tr.Path != "" {
+		where = filepath.Base(tr.Path)
+	}
+	return strings.TrimSpace(fmt.Sprintf("%s %s from %s %s", cmp.Or(tr.Lang, "und"), tr.Codec, where, tr.Title))
+}
+
 func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cobra.Command {
 	fs := flag.NewFlagSet("ocr", flag.ContinueOnError)
 	bundleDir := fs.String("bundle", "", "bundle directory (default: next to FILE, named FILE.film)")
-	lang := fs.String("lang", "auto", "language code of the subtitle track to read, or auto for the best track (a foreign one over English, text over bitmap)")
+	lang := fs.String("lang", "auto", "language code of the subtitle track to read, or auto for the best track or subtitle file beside FILE (the spoken language, then English)")
 	model := fs.String("model", nemotronModel, "OCR model")
 	timeout := fs.Duration("timeout", 30*time.Minute, "longest the render and OCR steps may take, such as 45m or 2h")
 	verbose := fs.Bool("verbose", false, "list the events that were set aside, and why")
@@ -127,7 +138,12 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 				_, _ = fmt.Fprintf(stderr, "set aside: %s: %s\n", i.Ref, i.Reason)
 			}
 		}
-		run := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout, OnIssues: issues}.Run
+		picked := func(tr subsrc.Track) {
+			if *verbose || *debug {
+				_, _ = fmt.Fprintf(stderr, "reading %s\n", trackName(tr))
+			}
+		}
+		run := ocr.Stage{Exec: ex, Store: st, Reader: rd, ProbeTimeout: time.Minute, Timeout: *timeout, OnIssues: issues, OnTrack: picked}.Run
 		if *burned {
 			ms, err := parseMasks(*masks)
 			if err != nil {

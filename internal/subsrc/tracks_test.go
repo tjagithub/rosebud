@@ -171,23 +171,41 @@ func TestPickAuto(t *testing.T) {
 	jpn := subsrc.Track{Pos: 1, Codec: "dvd_subtitle", Lang: "jpn"}
 	forced := subsrc.Track{Pos: 2, Codec: "dvd_subtitle", Lang: "jpn", Title: "Forced"}
 	srt := subsrc.Track{Pos: 3, Codec: "subrip", Lang: "jpn"}
+	engText := subsrc.Track{Pos: 4, Codec: "subrip", Lang: "eng"}
+	fra := subsrc.Track{Pos: 5, Codec: "webvtt", Lang: "fra"}
+	file := subsrc.Track{Codec: "subrip", Lang: "ja", Path: "/f.ja.srt"}
+	none := subsrc.Track{Pos: -1}
 	for _, c := range []struct {
 		name   string
 		tracks []subsrc.Track
-		want   int // Pos, or -1 for none
+		spoken string
+		want   subsrc.Track
 	}{
-		{"original language over english", []subsrc.Track{eng, jpn}, 1},
-		{"full over forced", []subsrc.Track{forced, jpn}, 1},
-		{"english when it is all there is", []subsrc.Track{eng}, 0},
-		{"a text track over a bitmap one in the same language", []subsrc.Track{jpn, srt}, 3},
-		{"original language bitmap over english text", []subsrc.Track{{Pos: 4, Codec: "subrip", Lang: "eng"}, jpn}, 1},
-		{"text alone", []subsrc.Track{srt}, 3},
-		{"unreadable codecs are passed over", []subsrc.Track{{Pos: 5, Codec: "eia_608", Lang: "jpn"}}, -1},
-		{"none", nil, -1},
+		{"the spoken language over english", []subsrc.Track{eng, jpn}, "jpn", jpn},
+		{"two-letter spoken code", []subsrc.Track{eng, jpn}, "ja", jpn},
+		{"english when the spoken language is unknown", []subsrc.Track{fra, eng}, "", eng},
+		{"english over a third language", []subsrc.Track{fra, engText}, "jpn", engText},
+		{"any language when there is nothing better", []subsrc.Track{fra}, "jpn", fra},
+		{"full over forced", []subsrc.Track{forced, jpn}, "jpn", jpn},
+		{"language before fullness", []subsrc.Track{eng, forced}, "jpn", forced},
+		{"text over bitmap in the same language", []subsrc.Track{jpn, srt}, "jpn", srt},
+		{"spoken-language bitmap over english text", []subsrc.Track{engText, jpn}, "jpn", jpn},
+		{"a file beside the video over the same track inside it", []subsrc.Track{srt, file}, "jpn", file},
+		{"the earliest of equals", []subsrc.Track{srt, {Pos: 9, Codec: "ass", Lang: "jpn"}}, "jpn", srt},
+		{"unreadable codecs are passed over", []subsrc.Track{{Pos: 5, Codec: "eia_608", Lang: "jpn"}}, "jpn", none},
+		{"none", nil, "jpn", none},
 	} {
-		got, ok := subsrc.PickAuto(c.tracks)
-		if c.want < 0 && ok || c.want >= 0 && (!ok || got.Pos != c.want) {
-			t.Errorf("%s: got %+v ok=%v, want pos %d", c.name, got, ok, c.want)
+		got, ok := subsrc.PickAuto(c.tracks, c.spoken)
+		if c.want.Pos < 0 && ok || c.want.Pos >= 0 && (!ok || got != c.want) {
+			t.Errorf("%s: got %+v ok=%v, want %+v", c.name, got, ok, c.want)
 		}
+	}
+}
+
+func TestPickPrefersAFileBesideTheVideo(t *testing.T) {
+	inside := subsrc.Track{Pos: 0, Codec: "subrip", Lang: "eng"}
+	file := subsrc.Track{Codec: "webvtt", Lang: "en", Path: "/f.en.vtt"}
+	if got, ok := subsrc.Pick([]subsrc.Track{inside, file}, "eng"); !ok || got != file {
+		t.Errorf("got %+v, want the file", got)
 	}
 }

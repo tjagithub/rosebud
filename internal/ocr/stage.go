@@ -27,9 +27,10 @@ type Stage struct {
 	Exec         Exec
 	Store        Store
 	Reader       Reader
-	ProbeTimeout time.Duration // for the quick ffprobe calls
-	Timeout      time.Duration // for rendering the subtitles
-	OnIssues     func([]Issue) // told what was set aside, if not nil
+	ProbeTimeout time.Duration      // for the quick ffprobe calls
+	Timeout      time.Duration      // for rendering the subtitles
+	OnIssues     func([]Issue)      // told what was set aside, if not nil
+	OnTrack      func(subsrc.Track) // told which track is read, if not nil
 }
 
 // Run is a jobs.Stage. Text is written once, at the end, so a failed or
@@ -43,7 +44,7 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	if err != nil {
 		return err
 	}
-	tr, err := s.track(ctx, file, lang)
+	tr, err := s.track(ctx, file, lang, spec.Params["spoken"])
 	if err != nil {
 		return err
 	}
@@ -51,7 +52,14 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	if tr.Kind() == subsrc.Text {
 		read = s.readText
 	}
-	events, texts, issues, err := read(ctx, file, tr.Pos, progress)
+	if s.OnTrack != nil {
+		s.OnTrack(tr)
+	}
+	src, pos := file, tr.Pos
+	if tr.Path != "" {
+		src, pos = tr.Path, 0
+	}
+	events, texts, issues, err := read(ctx, src, pos, progress)
 	if err != nil {
 		return err
 	}
@@ -71,14 +79,23 @@ func (s Stage) Run(ctx context.Context, spec core.JobSpec, progress func(done, t
 	return s.Store.SetSubtitle(ctx, spec.Film, out)
 }
 
-// track probes file and picks the subtitle track for lang, or the best one for "auto".
-func (s Stage) track(ctx context.Context, file, lang string) (subsrc.Track, error) {
+// track picks the subtitle track for lang from file's own and the subtitle files
+// beside it. For "auto" it follows spoken, or else the audio track's tag.
+func (s Stage) track(ctx context.Context, file, lang, spoken string) (subsrc.Track, error) {
 	tracks, err := subsrc.Probe(ctx, s.Exec, file, s.ProbeTimeout)
 	if err != nil {
 		return subsrc.Track{}, err
 	}
+	files, err := subsrc.Sidecars(file)
+	if err != nil {
+		return subsrc.Track{}, err
+	}
+	tracks = append(tracks, files...)
 	if lang == "auto" {
-		if tr, ok := subsrc.PickAuto(tracks); ok {
+		if spoken == "" {
+			spoken = subsrc.AudioLang(ctx, s.Exec, file, s.ProbeTimeout)
+		}
+		if tr, ok := subsrc.PickAuto(tracks, spoken); ok {
 			return tr, nil
 		}
 		return subsrc.Track{}, core.Skip("%s has no subtitle track to read", file)

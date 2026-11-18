@@ -29,4 +29,14 @@ func canon(code string) string {
 	return base.ISO3()
 }
 
+// isLang is whether code is a known ISO 639 language.
+func isLang(code string) bool {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if _, ok := bibliographic[code]; ok {
+		return true
+	}
+	_, err := language.ParseBase(code)
+	return err == nil
+}
+
 func sameLang(a, b string) bool { return a != "" && b != "" && canon(a) == canon(b) }

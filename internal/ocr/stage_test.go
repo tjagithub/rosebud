@@ -9,6 +9,9 @@ import (
 	"image/draw"
 	"image/png"
 	"iter"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +143,55 @@ func TestStageReadsATextTrackWithoutOCR(t *testing.T) {
 	}
 	if len(issues) == 0 || !strings.Contains(issues[0].Reason, "overlaps no scene") {
 		t.Errorf("the cue after the last scene should be reported, got %+v", issues)
+	}
+}
+
+func TestStageReadsASubtitleFileBesideTheVideo(t *testing.T) {
+	dir := t.TempDir()
+	video, vtt := filepath.Join(dir, "f.webm"), filepath.Join(dir, "f.en.vtt")
+	if err := os.WriteFile(vtt, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var input string
+	ex := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name == "ffmpeg" {
+			input = args[slices.Index(args, "-i")+1]
+			return []byte("1\n00:00:01,000 --> 00:00:02,000\nfrom the file\n"), nil
+		}
+		if slices.Contains(args, "s") {
+			return []byte("0,subrip,eng\n"), nil // the same language inside the video
+		}
+		return []byte("eng\n"), nil
+	}
+	st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(10)}}}
+	if err := newStage(ex, st, &bandReader{}).Run(t.Context(), spec(map[string]string{"file": video, "lang": "auto"}), noProgress); err != nil {
+		t.Fatal(err)
+	}
+	if input != vtt || st.got[1] != "from the file" {
+		t.Errorf("read %q into %v, want the vtt", input, st.got)
+	}
+}
+
+func TestStageAutoFollowsTheSpokenLanguage(t *testing.T) {
+	for spoken, want := range map[string]string{"jpn": "-map 0:s:1", "": "-map 0:s:0"} {
+		var ffmpeg string
+		ex := func(_ context.Context, name string, args ...string) ([]byte, error) {
+			switch {
+			case name == "ffmpeg":
+				ffmpeg = strings.Join(args, " ")
+				return []byte("1\n00:00:01,000 --> 00:00:02,000\nhi\n"), nil
+			case slices.Contains(args, "s"):
+				return []byte("2,subrip,eng\n3,subrip,jpn\n4,subrip,fra\n"), nil
+			}
+			return []byte(spoken + "\n"), nil // the audio tag
+		}
+		st := &memStore{scenes: []core.Scene{{ID: 1, Start: 0, End: sec(10)}}}
+		if err := newStage(ex, st, &bandReader{}).Run(t.Context(), spec(map[string]string{"file": "f.mkv", "lang": "auto"}), noProgress); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(ffmpeg, want) {
+			t.Errorf("audio %q: ffmpeg %s, want %s", spoken, ffmpeg, want)
+		}
 	}
 }
 

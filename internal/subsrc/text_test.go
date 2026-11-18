@@ -76,6 +76,26 @@ func TestReadTextFailsOnFFmpegErrorAndEmptyPath(t *testing.T) {
 	}
 }
 
+func TestAudioLangReadsTheFirstAudioTrackTag(t *testing.T) {
+	for out, want := range map[string]string{"jpn\n": "jpn", "und\n": "", "\n": "", "eng\nfra\n": "eng", "garbage!\n": ""} {
+		var args string
+		ex := func(_ context.Context, name string, a ...string) ([]byte, error) {
+			args = name + " " + strings.Join(a, " ")
+			return []byte(out), nil
+		}
+		if got := subsrc.AudioLang(t.Context(), ex, "f.mkv", time.Second); got != want {
+			t.Errorf("ffprobe said %q: got %q, want %q", out, got, want)
+		}
+		if !strings.Contains(args, "-select_streams a:0") {
+			t.Errorf("args: %s", args)
+		}
+	}
+	fail := func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("boom") }
+	if got := subsrc.AudioLang(t.Context(), fail, "f.mkv", time.Second); got != "" {
+		t.Errorf("a failed probe is unknown, got %q", got)
+	}
+}
+
 // TestReadTextRealFFmpeg muxes SubRip and ASS tracks into a tiny mkv and reads both back.
 func TestReadTextRealFFmpeg(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {

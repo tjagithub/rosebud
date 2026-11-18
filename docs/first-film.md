@@ -33,7 +33,7 @@ shows each stage.
 rose lang FILE        # which language is spoken? (optional; subs does this itself)
 rose scenes FILE      # cut into scenes, one frame each — run this first
 rose subs FILE        # transcribe the speech
-rose ocr FILE         # read the subtitle track: text (SRT, ASS) as is, DVD/Blu-ray by OCR
+rose ocr FILE         # read subtitles: text (SRT, ASS, also NAME.en.vtt beside FILE) as is, DVD/Blu-ray by OCR
 rose ocr FILE --burned   # or read subtitles burned into the picture
 rose translate FILE   # add English, so English searches find Japanese lines
 ```

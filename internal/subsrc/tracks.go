@@ -6,15 +6,18 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 // Track is one subtitle stream. Pos counts subtitle streams only, so it is
 // the N in ffmpeg's "0:s:N"; Index is the stream's number in the whole file.
+// Path is set for a subtitle file beside the video, whose only track it is.
 type Track struct {
 	Pos, Index         int
 	Codec, Lang, Title string
+	Path               string
 }
 
 // Kind says how a track's events can be read.
@@ -70,30 +73,13 @@ func ParseTracks(r io.Reader) ([]Track, error) {
 	}
 }
 
-// Pick chooses the best readable track in lang: text over bitmap, a full
-// track over forced or signs-only ones, then the earliest.
+// Pick chooses the best readable track in lang: a full track over forced or
+// signs-only ones, text over bitmap, a file beside the video, then the earliest.
 func Pick(tracks []Track, lang string) (Track, bool) {
 	if lang == "" {
 		return Track{}, false
 	}
-	var best Track
-	bestScore := 0
-	for _, t := range tracks {
-		if !sameLang(t.Lang, lang) || t.Kind() == Unknown {
-			continue
-		}
-		s := 1
-		if t.Kind() == Text {
-			s += 2
-		}
-		if !partial(t.Title) {
-			s += 4
-		}
-		if s > bestScore {
-			best, bestScore = t, s
-		}
-	}
-	return best, bestScore > 0
+	return best(tracks, func(t Track) bool { return sameLang(t.Lang, lang) }, func(Track) int { return 0 })
 }
 
 func partial(title string) bool {
@@ -101,28 +87,44 @@ func partial(title string) bool {
 	return strings.Contains(title, "forced") || strings.Contains(title, "signs")
 }
 
-// PickAuto chooses a track when no language is given: a foreign one over
-// English, which needs no translating, then full over forced, then text over bitmap.
-func PickAuto(tracks []Track) (Track, bool) {
-	var best Track
-	bestScore := 0
+// PickAuto chooses a track when none is asked for: the spoken language, then
+// English, then any other; within a language as Pick does. spoken may be empty.
+func PickAuto(tracks []Track, spoken string) (Track, bool) {
+	lang := func(t Track) int {
+		switch {
+		case sameLang(t.Lang, spoken):
+			return 2
+		case sameLang(t.Lang, "en"):
+			return 1
+		}
+		return 0
+	}
+	return best(tracks, func(Track) bool { return true }, lang)
+}
+
+// best is the earliest readable track that ok accepts with the highest
+// rank: first by lang, then full, text, and beside the video.
+func best(tracks []Track, ok func(Track) bool, lang func(Track) int) (Track, bool) {
+	rank := func(t Track) [4]int {
+		return [4]int{lang(t), b2i(!partial(t.Title)), b2i(t.Kind() == Text), b2i(t.Path != "")}
+	}
+	var out Track
+	var top [4]int
+	found := false
 	for _, t := range tracks {
-		if t.Kind() == Unknown {
+		if t.Kind() == Unknown || !ok(t) {
 			continue
 		}
-		s := 1
-		if t.Kind() == Text {
-			s += 2
-		}
-		if !partial(t.Title) {
-			s += 4
-		}
-		if !sameLang(t.Lang, "en") {
-			s += 8
-		}
-		if s > bestScore {
-			best, bestScore = t, s
+		if r := rank(t); !found || slices.Compare(r[:], top[:]) > 0 {
+			out, top, found = t, r, true
 		}
 	}
-	return best, bestScore > 0
+	return out, found
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

@@ -37,3 +37,8 @@ It uses [rikai Bench 265 0.8B](https://huggingface.co/rikai-translate/rikai-jp-e
 [PLaMo-3 translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-MLX-4bit)
 (Preferred Networks, PLaMo Community License; built with PLaMo), whose remote code runs on your machine.
 Models are downloaded at a pinned commit; `--model` needs a matching `--revision`.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The models above keep their own licences and are
+downloaded by you, not shipped with rosebud.

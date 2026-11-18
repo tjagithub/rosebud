@@ -32,6 +32,16 @@ type Media struct {
 	Chapters []Chapter
 }
 
+// SubtitleChoice is one subtitle source a film could be read from: a track
+// inside its video, or a subtitle file. Ref names it for loading: the track
+// number, or the file's path.
+type SubtitleChoice struct {
+	Ref                string
+	Lang, Codec, Title string
+	File               string // the subtitle file's name, or "" for a track inside the video
+	Bitmap             bool   // read by OCR, which is slow, rather than as text
+}
+
 // Chapter is a named point in a film.
 type Chapter struct {
 	Start time.Duration

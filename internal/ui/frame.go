@@ -37,6 +37,7 @@ type Option func(*config)
 type config struct {
 	bundle string
 	lib    Library
+	subs   Subtitles
 }
 
 // WithBundle shows each scene's frame from this bundle directory, in

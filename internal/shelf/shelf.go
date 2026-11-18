@@ -125,6 +125,11 @@ func (s *Shelf) Films(ctx context.Context) iter.Seq2[core.Film, error] {
 	}
 }
 
+// Store is the catalog that holds film, for writing to it.
+func (s *Shelf) Store(ctx context.Context, film core.FilmID) (*store.Store, error) {
+	return s.owner(ctx, film)
+}
+
 // owner is the catalog that holds film, or nil.
 func (s *Shelf) owner(ctx context.Context, film core.FilmID) (*store.Store, error) {
 	for _, st := range s.books {

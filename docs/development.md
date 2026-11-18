@@ -15,7 +15,8 @@ internal/
   scenes/          cut detection and frames (ffmpeg, hwaccel)
   subs/            speech to text (Parakeet), audio chunking
   langid/          spoken-language detection (Whisper)
-  subsrc/          probing and picking subtitle tracks, reading text tracks
+  subsrc/          probing and picking subtitle tracks and files, reading text tracks
+  subload/         listing and loading a film's subtitles for the TUI (the l key)
   ocr/             the subtitle stage: text tracks as is, bitmap and burned-in by OCR (Nemotron-Parse)
   translate/       rikai / PLaMo backends
   ui/              bubbletea TUI; ui/uitest drives it in tests

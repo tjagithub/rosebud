@@ -70,6 +70,7 @@ searches all films, `/` filters the list, `esc` quits.
 | `p` | play from this scene; `esc` stops on the scene reached |
 | `s` | scene picker |
 | `t` | jump to a timecode (`HH:MM:SS:FF`) |
+| `l` | load subtitles: a track, a file beside the film, or any file by path |
 | `/` | filter the dialogue list |
 | `tab` | move focus between text boxes; `↑`/`↓` scroll them |
 | `esc` | back |

@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/tjagithub/rosebud/internal/ocr"
+	"github.com/tjagithub/rosebud/internal/scenes"
 	"github.com/tjagithub/rosebud/internal/shelf"
+	"github.com/tjagithub/rosebud/internal/subload"
 	"github.com/tjagithub/rosebud/internal/ui"
 )
 
@@ -35,7 +40,12 @@ func tuiCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = sh.Close() }()
-			_, err = tea.NewProgram(ui.New(sh, limit, ui.WithBundle(expandHome(bundle)), ui.WithLibrary(sh)), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
+			subs, err := subtitleLoader(ctx, sh)
+			if err != nil {
+				return err
+			}
+			opts := []ui.Option{ui.WithBundle(expandHome(bundle)), ui.WithLibrary(sh), ui.WithSubtitles(subs)}
+			_, err = tea.NewProgram(ui.New(sh, limit, opts...), tea.WithContext(ctx), tea.WithOutput(c.OutOrStdout())).Run()
 			return err
 		},
 	}
@@ -45,4 +55,25 @@ func tuiCmd() *cobra.Command {
 	_ = cmd.MarkFlagDirname("bundle")
 	_ = cmd.MarkFlagDirname("dir")
 	return cmd
+}
+
+// subtitleLoader lets the scene screen load subtitles into the shelf's films,
+// with the settings `rose ocr` uses. Nothing may print while the TUI runs.
+func subtitleLoader(ctx context.Context, sh *shelf.Shelf) (subload.Loader, error) {
+	cfg, err := loadConfig(ctx, "", os.Environ())
+	if err != nil {
+		return subload.Loader{}, err
+	}
+	ex := ocr.Exec(scenes.NewExec(scenes.WithWaitDelay(5 * time.Second)))
+	timeout := cfg.Duration("OCR_TIMEOUT")
+	return subload.Loader{
+		Exec: ex, Store: sh.Store, Timeout: timeout,
+		NewReader: func(bundle string) (ocr.Reader, error) {
+			cfg, err := loadConfig(ctx, bundle, os.Environ())
+			if err != nil {
+				return nil, err
+			}
+			return nemotronReader(ctx, cfg, ex, cfg.Get("OCR_MODEL"), timeout, io.Discard, false)
+		},
+	}, nil
 }

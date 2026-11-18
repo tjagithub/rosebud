@@ -35,6 +35,10 @@ type detailScreen struct {
 	play   *playState
 	seq    int
 	w, h   int
+
+	subs             Subtitles    // loads subtitles with l; nil where it cannot
+	subName, subNote string       // the subtitles loading or loaded, and how it went
+	keep             core.SceneID // the scene to stay on when the scenes are read again
 }
 
 // fps is the frame rate for timecodes: the film's, rounded, else defaultFPS.
@@ -94,12 +98,17 @@ var (
 	pickKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "scenes"))
 	playKey   = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "play"))
 	timeKey   = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "time"))
+	subsKey   = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "subtitles"))
 	focusKey  = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus box"))
 	scrollKey = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scroll"))
 )
 
 func (d *detailScreen) ShortHelp() []key.Binding {
-	return []key.Binding{stepKey, leapKey, focusKey, scrollKey, pickKey, playKey, timeKey, filterKey, backKey}
+	keys := []key.Binding{stepKey, leapKey, focusKey, scrollKey, pickKey, playKey, timeKey}
+	if d.subs != nil {
+		keys = append(keys, subsKey)
+	}
+	return append(keys, filterKey, backKey)
 }
 func (d *detailScreen) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }
 
@@ -115,6 +124,8 @@ func (d *detailScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return d, d.jump(msg)
 	case scenesMsg:
 		return d, d.setScenes(msg)
+	case subLoadMsg:
+		return d, d.onSubLoad(msg)
 	case tea.MouseMsg:
 		return d, d.onMouse(msg)
 	case tea.KeyPressMsg:
@@ -146,6 +157,12 @@ func (d *detailScreen) setScenes(msg scenesMsg) tea.Cmd {
 		return nil
 	}
 	d.hits, d.err, d.i = msg.Hits, msg.Err, 0
+	for i, h := range d.hits {
+		if d.keep != 0 && h.Scene.ID == d.keep {
+			d.i = i
+		}
+	}
+	d.keep = 0
 	return d.reload()
 }
 
@@ -223,6 +240,10 @@ func (d *detailScreen) onSceneKey(msg tea.KeyPressMsg) tea.Cmd {
 		return Open(newPicker(d))
 	case "t":
 		return Open(newTimecode(d, d.fps()))
+	case "l":
+		if d.subs != nil {
+			return Open(newSubPicker(d))
+		}
 	case "/":
 		cmd := d.f.open()
 		d.relayout(false)
@@ -314,8 +335,13 @@ func (d *detailScreen) sceneNote() string {
 	return fmt.Sprintf("%s – %s · %.0fs", Clock(s.Start), Clock(s.End), (s.End - s.Start).Seconds())
 }
 
-// Status is the film's title.
-func (d *detailScreen) Status() string { return d.film.Title }
+// Status is the film's title, after how a subtitle load went.
+func (d *detailScreen) Status() string {
+	if d.subNote != "" {
+		return d.subNote + dim.Render(" · ") + d.film.Title
+	}
+	return d.film.Title
+}
 
 // image is the frame's placeholder cells, or nothing while it loads.
 func (d *detailScreen) image() string {

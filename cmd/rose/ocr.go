@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/tjagithub/rosebud/internal/cache"
+	"github.com/tjagithub/rosebud/internal/config"
 	"github.com/tjagithub/rosebud/internal/core"
 	"github.com/tjagithub/rosebud/internal/engine"
 	"github.com/tjagithub/rosebud/internal/limit"
@@ -32,6 +33,25 @@ const nemotronModel = "mlx-community/Nemotron-Parse-2.0-8bit"
 // the Reader for a model name; nil uses Nemotron-Parse.
 func runOCR(ctx context.Context, args []string, stdout, stderr io.Writer, newReader func(model string, timeout time.Duration) ocr.Reader) error {
 	return execute(ctx, ocrCmd(newReader), args, stdout, stderr)
+}
+
+// nemotronReader is the cached Nemotron-Parse reader, after trimming the cache.
+func nemotronReader(ctx context.Context, cfg config.Config, ex ocr.Exec, model string, timeout time.Duration, stderr io.Writer, debug bool) (ocr.Reader, error) {
+	dir, err := cacheDir(cfg)
+	if err != nil {
+		return nil, err
+	}
+	c := cache.Dir{Path: dir}
+	sweepCtx, stopSweep := context.WithTimeout(ctx, 30*time.Second)
+	n, err := c.Sweep(sweepCtx, int64(cfg.Int("CACHE_MAX_MB"))<<20, cfg.Duration("CACHE_MAX_AGE"))
+	stopSweep()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "cache: not trimmed: %v\n", err)
+	} else if debug {
+		_, _ = fmt.Fprintf(stderr, "debug: cache trimmed, %d removed\n", n)
+	}
+	nem := ocr.Nemotron{Exec: ex, Model: model, Load: timeout, PerPage: timeout / 4}
+	return ocr.Cached{Inner: nem, Dir: c, Salt: nem.CacheKey(), Batch: cfg.Int("OCR_BATCH")}, nil
 }
 
 // spokenOf is the language stored as spoken in film, or "" if none is.
@@ -124,22 +144,8 @@ func ocrCmd(newReader func(model string, timeout time.Duration) ocr.Reader) *cob
 		var rd ocr.Reader
 		if newReader != nil {
 			rd = newReader(*model, *timeout)
-		} else {
-			dir, err := cacheDir(cfg)
-			if err != nil {
-				return err
-			}
-			c := cache.Dir{Path: dir}
-			sweepCtx, stopSweep := context.WithTimeout(ctx, 30*time.Second)
-			n, err := c.Sweep(sweepCtx, int64(cfg.Int("CACHE_MAX_MB"))<<20, cfg.Duration("CACHE_MAX_AGE"))
-			stopSweep()
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "cache: not trimmed: %v\n", err)
-			} else if *debug {
-				_, _ = fmt.Fprintf(stderr, "debug: cache trimmed, %d removed\n", n)
-			}
-			nem := ocr.Nemotron{Exec: ex, Model: *model, Load: *timeout, PerPage: *timeout / 4}
-			rd = ocr.Cached{Inner: nem, Dir: c, Salt: nem.CacheKey(), Batch: cfg.Int("OCR_BATCH")}
+		} else if rd, err = nemotronReader(ctx, cfg, ex, *model, *timeout, stderr, *debug); err != nil {
+			return err
 		}
 		issues := func(is []ocr.Issue) {
 			if !*verbose && !*debug {

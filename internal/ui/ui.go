@@ -31,7 +31,11 @@ func New(src Searcher, limit int, opts ...Option) *Model {
 	if cfg.lib == nil {
 		return &Model{help: newHelp(), stack: []Screen{newSearch(src, limit, cfg)}}
 	}
-	return &Model{help: newHelp(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen { return newFilmScreen(src, f, cmp.Or(f.Bundle, cfg.bundle)) })}}
+	return &Model{help: newHelp(), stack: []Screen{newLibrary(cfg.lib, searchOnce(newSearch(src, limit, cfg)), func(f core.Film) Screen {
+		d := newFilmScreen(src, f, cmp.Or(f.Bundle, cfg.bundle))
+		d.subs = cfg.subs
+		return d
+	})}}
 }
 
 // Selected is the index of the highlighted hit on the search screen.
